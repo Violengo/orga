@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 198">
+  <rect x="3" y="3" width="334" height="192" rx="24" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="5" stroke-dasharray="13 10"/>
+  <g fill="none" stroke="#6B7280" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M170 111V52"/>
+    <path d="m142 79 28-28 28 28"/>
+    <path d="M107 110v25c0 9 7 16 16 16h94c9 0 16-7 16-16v-25"/>
+  </g>
+  <text x="170" y="181" fill="#6B7280" font-family="Open Sans,Arial,sans-serif" font-size="17" font-weight="700" text-anchor="middle">AJOUTER UN LOGO</text>
+</svg>
