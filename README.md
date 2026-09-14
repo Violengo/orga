@@ -9,7 +9,8 @@ Premier socle d'une application web spécialisée dans la création et l'export 
 - réorganisation des blocs frères par glisser-déposer ou commandes monter/descendre ;
 - vue organigramme et vue liste adaptée aux petits écrans ;
 - personnalisation de la couleur et import d'un logo ;
-- sauvegarde locale dans le navigateur ;
+- authentification et bibliothèque personnelle d’organigrammes via Supabase ;
+- sauvegarde cloud, avec copie locale et fichier source `.orgchart` ;
 - exports PDF A3 et JPG haute définition ;
 - configuration de déploiement Vercel.
 
@@ -33,7 +34,7 @@ pnpm preview
 
 Le dépôt peut être importé directement dans Vercel. Le framework Vite et la redirection SPA sont déjà décrits dans `vercel.json`.
 
-Cette première version conserve les données dans le navigateur. Avant un usage multi-utilisateur, il faudra ajouter l'authentification et une base de données partagée.
+La configuration publique Supabase est fournie par `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY`. Le schéma sécurisé se trouve dans `supabase/migrations`.
 
 ## Prochaines étapes recommandées
 
@@ -41,4 +42,4 @@ Cette première version conserve les données dans le navigateur. Avant un usage
 2. remplacer les données de démonstration par le modèle métier définitif ;
 3. ajouter import/export JSON et CSV/Excel ;
 4. générer un PDF vectoriel et gérer A4 à A0 ;
-5. ajouter base de données, comptes et historique des versions.
+5. ajouter un historique détaillé des versions.

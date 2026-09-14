@@ -584,8 +584,14 @@ function ListView({ chart, selectedIds, onSelect }: { chart: OrgChart; selectedI
   return <div className="mobile-list">{children(null).map((root) => <Branch key={root.id} node={root} />)}</div>
 }
 
-export default function App() {
-  const [chart, setChartState] = useState<OrgChart>(loadChart)
+export type OrgChartEditorProps = {
+  initialChart?: OrgChart
+  onBackToLibrary?: () => void
+  onCloudSave?: (chart: OrgChart) => Promise<void>
+}
+
+export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgChartEditorProps) {
+  const [chart, setChartState] = useState<OrgChart>(() => initialChart ? structuredClone(initialChart) : loadChart())
   const chartRef = useRef(chart)
   const undoStack = useRef<OrgChart[]>([])
   const redoStack = useRef<OrgChart[]>([])
@@ -770,17 +776,22 @@ export default function App() {
     const content = JSON.stringify(makeOrgChartFile(source), null, 2)
     downloadBlob(new Blob([content], { type: 'application/json;charset=utf-8' }), `${safeFileName(source.fileName)}.orgchart`)
   }
-  const saveNow = () => {
+  const saveNow = async () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(chart))
-    downloadOrgChart()
-    showNotice('Enregistré sur cet appareil · fichier .orgchart téléchargé')
+    try {
+      if (onCloudSave) await onCloudSave(chart)
+      downloadOrgChart()
+      showNotice(onCloudSave ? 'Enregistré dans le cloud · fichier .orgchart téléchargé' : 'Enregistré sur cet appareil · fichier .orgchart téléchargé')
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : 'Impossible d’enregistrer dans le cloud')
+    }
   }
   const save = () => {
     if (countEmptyFields(chart) > 0) {
       setPendingIncompleteAction({ kind: 'save' })
       return
     }
-    saveNow()
+    void saveNow()
   }
   const importOrgChart = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget
@@ -1188,6 +1199,7 @@ export default function App() {
           <span>.orgchart</span>
         </label>
         <div className="topbar-actions">
+          {onBackToLibrary && <button className="button ghost" onClick={onBackToLibrary}><LayoutDashboard size={17} /><span>Mes organigrammes</span></button>}
           <div className="history-actions">
             <button aria-label="Annuler" title="Annuler (Ctrl+Z)" onClick={undo}><Undo2 size={17} /></button>
             <button aria-label="Rétablir" title="Rétablir (Ctrl+Maj+Z)" onClick={redo}><Redo2 size={17} /></button>
@@ -1222,7 +1234,7 @@ export default function App() {
             <button className="button primary" onClick={() => {
               const action = pendingIncompleteAction
               setPendingIncompleteAction(null)
-              if (action.kind === 'save') saveNow()
+              if (action.kind === 'save') void saveNow()
               else void generateExportPreview(action.format)
             }}>{pendingIncompleteAction.kind === 'save' ? 'Enregistrer quand même' : 'Exporter quand même'}</button>
           </footer>
