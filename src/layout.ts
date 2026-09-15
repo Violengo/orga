@@ -371,7 +371,13 @@ export function layoutNodes(nodes: OrgNode[]) {
       const packShift = packIndex === 0 || firstPackMinX === null ? -(packMinX + packMaxX) / 2 : firstPackMinX - packMinX
       if (packIndex === 0) firstPackMinX = packMinX + packShift
       pack.forEach((node, index) => {
-        const positionedNode: PositionedNode = { ...node, x: resolvedLeft[index] + packShift, y: packTop, width: nodeWidth(node), height: nodeHeight(node), depth }
+        const placedX = resolvedLeft[index] + packShift
+        const width = nodeWidth(node)
+        const overlappingAbove = positioned.filter((candidate) => candidate.depth === depth && candidate.x < placedX + width && candidate.x + candidate.width > placedX)
+        const placedY = packIndex === 0 || !overlappingAbove.length
+          ? packTop
+          : Math.max(...overlappingAbove.map((candidate) => candidate.y + candidate.height)) + 36
+        const positionedNode: PositionedNode = { ...node, x: placedX, y: placedY, width, height: nodeHeight(node), depth }
         positioned.push(positionedNode)
         positionedById.set(node.id, positionedNode)
       })
