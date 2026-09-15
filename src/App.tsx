@@ -451,7 +451,7 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
         if (centered) {
           context.beginPath()
           context.moveTo(node.x + node.width / 2, node.y + headerHeight + centered.y + centered.height)
-          context.lineTo(node.x + node.width / 2, node.y + node.height)
+          context.lineTo(node.x + node.width / 2, node.y + node.height + 3)
           context.stroke()
         }
       }
@@ -737,7 +737,7 @@ function NodeCard({
             })}
             {isStaff && (() => {
               const centered = tree.members.filter((member) => Math.abs(member.x + member.width / 2 - node.width / 2) < 1).sort((left, right) => right.depth - left.depth)[0]
-              return centered ? <path d={`M ${node.width / 2} ${centered.y + centered.height} V ${tree.height}`} /> : null
+              return centered ? <path d={`M ${node.width / 2} ${centered.y + centered.height} V ${tree.height + 3}`} /> : null
             })()}
           </svg>
           {tree.members.map((member) => renderMember(member, member.width, { position: 'absolute', left: member.x, top: member.y, width: member.width, minHeight: member.height }))}
