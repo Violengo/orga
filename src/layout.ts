@@ -61,7 +61,7 @@ export const memberTreeLayout = (node: OrgNode, width = hierarchyNodeWidth(node)
   const leaves = Math.max(1, roots.reduce((total, member) => total + hierarchyLeafCount(node, member), 0))
   const gap = 12
   const unitWidth = (width - Math.max(0, leaves - 1) * gap) / leaves
-  const cardWidth = Math.min(220, Math.max(125, unitWidth))
+  const cardWidth = leaves === 1 ? width : Math.min(220, Math.max(125, unitWidth))
   const provisional: Array<PositionedMember & { centerUnit: number }> = []
 
   const place = (member: Member, startUnit: number, depth: number, seen = new Set<string>()) => {

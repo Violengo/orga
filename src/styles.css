@@ -241,6 +241,13 @@ button { color: inherit; }
 .node-nav button.active small { color: color-mix(in srgb, var(--node-accent) 78%, #4b4e53); background: #ffffffb8; }
 .convert-department { display: grid; width: 25px; height: 25px; flex: 0 0 auto; place-items: center; color: #737981; border: 1px solid #dfe1e4; border-radius: 7px; background: #fff; cursor: pointer; }
 .convert-department:hover, .convert-department:focus-visible { color: #fff; border-color: var(--node-accent); outline: none; background: var(--node-accent); }
+.structure-functions { display: grid; gap: 1px; margin: -1px 7px 5px 29px; }
+.function-nav-row { display: flex; min-width: 0; height: 25px; align-items: center; gap: 5px; padding: 0 7px; color: #8a8f96; border: 1px solid transparent; border-radius: 6px; font-size: 9.5px; cursor: grab; }
+.function-nav-row:hover { color: #555b63; border-color: #e4e5e7; background: #fff; }
+.function-nav-row.active { color: #9b3c0b; border-color: #f2c3aa; background: #fff5ef; font-weight: 700; }
+.function-nav-row.dragging { opacity: .38; }
+.function-nav-row > svg { flex: 0 0 auto; color: #b8bbc0; }
+.function-nav-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drag-handle { flex: 0 0 auto; color: #b0b3b8; }
 .hierarchy-branch { display: none; flex: 0 0 auto; width: 11px; height: 15px; margin-left: -10px; border-bottom: 1.5px solid #c9ccd0; border-radius: 0 0 0 5px; transform: translateY(-4px); }
 .node-nav button:not([data-depth="0"]) .hierarchy-branch { display: block; }

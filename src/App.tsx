@@ -800,6 +800,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
   const [pendingDeleteMember, setPendingDeleteMember] = useState<{ nodeId: string; memberId: string } | null>(null)
   const [pendingIncompleteAction, setPendingIncompleteAction] = useState<PendingIncompleteAction | null>(null)
   const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [draggedFunction, setDraggedFunction] = useState<{ nodeId: string; memberId: string } | null>(null)
   const [dropIntent, setDropIntent] = useState<{ targetId: string; mode: DropMode } | null>(null)
   const [handMode, setHandMode] = useState(false)
   const [isPanning, setIsPanning] = useState(false)
@@ -1127,6 +1128,35 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     showNotice(`${deletedMemberIds.size} fonction${deletedMemberIds.size > 1 ? 's' : ''} supprimée${deletedMemberIds.size > 1 ? 's' : ''}`)
   }
 
+  const moveFunctionByDrop = (targetNodeId: string, beforeMemberId?: string) => {
+    if (!draggedFunction) return
+    const sourceNode = chart.nodes.find((node) => node.id === draggedFunction.nodeId)
+    const targetNode = chart.nodes.find((node) => node.id === targetNodeId)
+    const root = sourceNode?.members.find((member) => member.id === draggedFunction.memberId)
+    if (!sourceNode || !targetNode || !root) return
+    const movedIds = memberBranchIds(sourceNode.members, root.id)
+    if (beforeMemberId && movedIds.has(beforeMemberId)) return
+    const branch = sourceNode.members.filter((member) => movedIds.has(member.id)).map((member) => member.id === root.id ? { ...member, parentMemberId: beforeMemberId ? targetNode.members.find((candidate) => candidate.id === beforeMemberId)?.parentMemberId ?? null : null } : member)
+    setChart((current) => ({
+      ...current,
+      nodes: current.nodes
+        .filter((node) => !(node.id === sourceNode.id && node.kind === 'function-group' && sourceNode.members.length === branch.length && sourceNode.id !== targetNode.id))
+        .map((node) => {
+          let members = node.id === sourceNode.id ? node.members.filter((member) => !movedIds.has(member.id)) : node.members
+          if (node.id !== targetNode.id) return { ...node, members }
+          const insertion = beforeMemberId ? members.findIndex((member) => member.id === beforeMemberId) : members.length
+          members = [...members]
+          members.splice(insertion < 0 ? members.length : insertion, 0, ...branch)
+          return { ...node, members }
+        }),
+    }))
+    setSelectedId(targetNodeId)
+    setSelectedIds(new Set([targetNodeId]))
+    setSelectedMember({ nodeId: targetNodeId, memberId: root.id })
+    setDraggedFunction(null)
+    showNotice('Fonction déplacée')
+  }
+
   const addCollaborator = (nodeId: string, memberId: string) => {
     const node = chart.nodes.find((item) => item.id === nodeId)
     const member = node?.members.find((item) => item.id === memberId)
@@ -1426,6 +1456,18 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     return () => window.removeEventListener('keydown', onShortcut)
   })
 
+  useEffect(() => {
+    if (!pendingDeleteId && !pendingDeleteMember) return
+    const confirmWithKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter') return
+      event.preventDefault()
+      if (pendingDeleteMember) removeMember(pendingDeleteMember.nodeId, pendingDeleteMember.memberId)
+      else confirmDeleteNode()
+    }
+    window.addEventListener('keydown', confirmWithKeyboard)
+    return () => window.removeEventListener('keydown', confirmWithKeyboard)
+  }, [pendingDeleteId, pendingDeleteMember])
+
   const pendingDeleteNode = chart.nodes.find((node) => node.id === pendingDeleteId)
   const pendingFunctionNode = pendingDeleteMember ? chart.nodes.find((node) => node.id === pendingDeleteMember.nodeId) : undefined
   const pendingFunction = pendingFunctionNode?.members.find((member) => member.id === pendingDeleteMember?.memberId)
@@ -1459,6 +1501,8 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
         className={`${selectedIds.has(node.id) ? 'active' : ''} ${dropIntent?.targetId === node.id ? `drop-${dropIntent.mode}` : ''} ${draggedId === node.id ? 'dragging' : ''}`}
         style={{ '--node-accent': node.color || chart.accent } as CSSProperties}
         onClick={(event) => selectNode(node.id, event.ctrlKey || event.metaKey)}
+        onDragOver={(event) => { if (draggedFunction) event.preventDefault() }}
+        onDrop={(event) => { if (!draggedFunction) return; event.preventDefault(); event.stopPropagation(); moveFunctionByDrop(node.id) }}
         onPointerDown={(event) => {
           if (event.button !== 0 || selectedIds.size !== 1 || !selectedIds.has(node.id)) return
           event.currentTarget.setPointerCapture(event.pointerId)
@@ -1540,6 +1584,41 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
           }}
         ><Building2 size={13} /></span>}
       </button>
+      {node.members.length > 0 && <div className="structure-functions">
+        {node.members.map((member) => {
+          let functionDepth = 0
+          let parentId = member.parentMemberId
+          const visited = new Set<string>()
+          while (parentId && !visited.has(parentId)) {
+            visited.add(parentId)
+            const parent = node.members.find((candidate) => candidate.id === parentId)
+            if (!parent) break
+            functionDepth += 1
+            parentId = parent.parentMemberId
+          }
+          const active = selectedMember?.nodeId === node.id && selectedMember.memberId === member.id
+          return <div
+            className={`function-nav-row ${active ? 'active' : ''} ${draggedFunction?.memberId === member.id ? 'dragging' : ''}`}
+            style={{ marginLeft: functionDepth * 14 }}
+            draggable
+            key={member.id}
+            onDragStart={(event) => { event.stopPropagation(); setDraggedFunction({ nodeId: node.id, memberId: member.id }); event.dataTransfer.effectAllowed = 'move' }}
+            onDragEnd={() => setDraggedFunction(null)}
+            onDragOver={(event) => { if (draggedFunction) { event.preventDefault(); event.dataTransfer.dropEffect = 'move' } }}
+            onDrop={(event) => { event.preventDefault(); event.stopPropagation(); moveFunctionByDrop(node.id, member.id) }}
+            onClick={(event) => {
+              event.stopPropagation()
+              selectNode(node.id, false, false)
+              setSelectedMember({ nodeId: node.id, memberId: member.id })
+              setInspectorOpen(true)
+            }}
+            title="Glisser pour déplacer cette fonction"
+          >
+            <GripVertical size={11} />
+            <span>{member.role || 'Nom de la fonction'}</span>
+          </div>
+        })}
+      </div>}
       {children.length > 0 && <div className="structure-children">{children.map((child) => renderStructureBranch(child, depth + 1, nextAncestry))}</div>}
     </div>
   }
