@@ -118,7 +118,21 @@ function safeFileName(value: string) {
   return cleaned || 'Organigramme'
 }
 
-function normalizeChart(value: unknown): OrgChart | null {
+function hasHierarchyCycle(nodes: OrgNode[]) {
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  return nodes.some((node) => {
+    const visited = new Set<string>()
+    let current: OrgNode | undefined = node
+    while (current?.parentId) {
+      if (visited.has(current.id)) return true
+      visited.add(current.id)
+      current = byId.get(current.parentId)
+    }
+    return false
+  })
+}
+
+export function normalizeChart(value: unknown): OrgChart | null {
   if (!value || typeof value !== 'object') return null
   const candidate = value as Partial<OrgChart>
   if (typeof candidate.id !== 'string' || !Array.isArray(candidate.nodes)) return null
@@ -126,6 +140,7 @@ function normalizeChart(value: unknown): OrgChart | null {
   const ids = new Set(candidate.nodes.map((node) => node.id))
   if (ids.size !== candidate.nodes.length) return null
   if (candidate.nodes.some((node) => node.parentId !== null && (typeof node.parentId !== 'string' || !ids.has(node.parentId)))) return null
+  if (hasHierarchyCycle(candidate.nodes)) return null
   if (candidate.nodes.some((node) => node.members.some((member) => !member || typeof member.id !== 'string' || typeof member.role !== 'string' || typeof member.name !== 'string'))) return null
 
   const logoId = typeof candidate.logoId === 'string' ? candidate.logoId : candidate.logo ? 'custom' : 'laurenty-nettoyage'
@@ -1270,6 +1285,88 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     return ids.size - 1
   })() : 0
 
+  const structureChildren = (parentId: string | null) => chart.nodes.filter((node) => node.parentId === parentId)
+  const renderStructureBranch = (node: OrgNode, depth = 0, ancestry = new Set<string>()): React.ReactNode => {
+    if (ancestry.has(node.id)) return null
+    const nextAncestry = new Set(ancestry).add(node.id)
+    const children = structureChildren(node.id)
+    return <div className="structure-branch" data-branch-depth={depth} key={node.id}>
+      <button
+        data-node-id={node.id}
+        data-depth={depth}
+        data-draggable={selectedIds.size === 1 && selectedIds.has(node.id)}
+        className={`${selectedIds.has(node.id) ? 'active' : ''} ${dropIntent?.targetId === node.id ? `drop-${dropIntent.mode}` : ''} ${draggedId === node.id ? 'dragging' : ''}`}
+        style={{ '--node-accent': node.color || chart.accent } as CSSProperties}
+        onClick={(event) => selectNode(node.id, event.ctrlKey || event.metaKey)}
+        onPointerDown={(event) => {
+          if (event.button !== 0 || selectedIds.size !== 1 || !selectedIds.has(node.id)) return
+          event.currentTarget.setPointerCapture(event.pointerId)
+          duplicateOnDropRef.current = event.altKey
+          setDraggedId(node.id)
+        }}
+        onPointerMove={(event) => {
+          if (event.buttons !== 1 || draggedId !== node.id) return
+          const targetElement = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-node-id]')
+          const targetId = targetElement?.dataset.nodeId
+          if (!targetElement || !targetId || targetId === node.id) {
+            dropIntentRef.current = null
+            setDropIntent(null)
+            return
+          }
+          const rect = targetElement.getBoundingClientRect()
+          const ratio = (event.clientY - rect.top) / rect.height
+          const mode: DropMode = ratio < .25 ? 'before' : ratio > .75 ? 'after' : 'inside'
+          const intent = { targetId, mode }
+          dropIntentRef.current = intent
+          setDropIntent(intent)
+        }}
+        onPointerUp={() => {
+          if (draggedId !== node.id) return
+          const intent = dropIntentRef.current
+          if (intent) dropNode(node.id, intent.targetId, intent.mode, duplicateOnDropRef.current)
+          setDraggedId(null)
+          duplicateOnDropRef.current = false
+          dropIntentRef.current = null
+          setDropIntent(null)
+        }}
+        onPointerCancel={() => {
+          setDraggedId(null)
+          duplicateOnDropRef.current = false
+          dropIntentRef.current = null
+          setDropIntent(null)
+        }}
+        title={`Rattaché à ${node.parentId ? chart.nodes.find((candidate) => candidate.id === node.parentId)?.title ?? 'un département' : 'la racine'}`}
+      >
+        <GripVertical className="drag-handle" size={14} />
+        <span className="hierarchy-branch" aria-hidden="true" />
+        <span className="nav-dot" />
+        <span
+          className="nav-label"
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-label={`Renommer ${node.title}`}
+          spellCheck={false}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => { event.stopPropagation(); selectNode(node.id, event.ctrlKey || event.metaKey) }}
+          onBlur={(event) => {
+            const title = event.currentTarget.textContent?.trim()
+            if (title && title !== node.title) updateNodeById(node.id, { title })
+            else if (!title) event.currentTarget.textContent = node.title
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              event.currentTarget.blur()
+            }
+          }}
+        >{node.title}</span>
+        <small>{node.members.length}</small>
+      </button>
+      {children.length > 0 && <div className="structure-children">{children.map((child) => renderStructureBranch(child, depth + 1, nextAncestry))}</div>}
+    </div>
+  }
+
   return (
     <div className="app-shell" spellCheck={false}>
       <header className="topbar">
@@ -1358,81 +1455,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
         <div className="panel-heading"><div><span>Structure</span><strong>{chart.nodes.length} blocs</strong></div><button className="icon-button" onClick={addNode} title="Ajouter un bloc"><Plus size={18} /></button></div>
         <p className="structure-hint">Ctrl+clic pour sélectionner · Alt+glisser pour dupliquer · Déposez au centre d’un bloc pour l’y rattacher</p>
         <nav className="node-nav">
-          {layout.nodes.map((node) => (
-            <button
-              key={node.id}
-              data-node-id={node.id}
-              data-depth={node.depth}
-              data-draggable={selectedIds.size === 1 && selectedIds.has(node.id)}
-              className={`${selectedIds.has(node.id) ? 'active' : ''} ${dropIntent?.targetId === node.id ? `drop-${dropIntent.mode}` : ''} ${draggedId === node.id ? 'dragging' : ''}`}
-              style={{ paddingLeft: 9 + node.depth * 17, '--node-accent': node.color || chart.accent } as CSSProperties}
-              onClick={(event) => selectNode(node.id, event.ctrlKey || event.metaKey)}
-              onPointerDown={(event) => {
-                if (event.button !== 0 || selectedIds.size !== 1 || !selectedIds.has(node.id)) return
-                event.currentTarget.setPointerCapture(event.pointerId)
-                duplicateOnDropRef.current = event.altKey
-                setDraggedId(node.id)
-              }}
-              onPointerMove={(event) => {
-                if (event.buttons !== 1 || draggedId !== node.id) return
-                const targetElement = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-node-id]')
-                const targetId = targetElement?.dataset.nodeId
-                if (!targetElement || !targetId || targetId === node.id) {
-                  dropIntentRef.current = null
-                  setDropIntent(null)
-                  return
-                }
-                const rect = targetElement.getBoundingClientRect()
-                const ratio = (event.clientY - rect.top) / rect.height
-                const mode: DropMode = ratio < .25 ? 'before' : ratio > .75 ? 'after' : 'inside'
-                const intent = { targetId, mode }
-                dropIntentRef.current = intent
-                setDropIntent(intent)
-              }}
-              onPointerUp={() => {
-                if (draggedId !== node.id) return
-                const intent = dropIntentRef.current
-                if (intent) dropNode(node.id, intent.targetId, intent.mode, duplicateOnDropRef.current)
-                setDraggedId(null)
-                duplicateOnDropRef.current = false
-                dropIntentRef.current = null
-                setDropIntent(null)
-              }}
-              onPointerCancel={() => {
-                setDraggedId(null)
-                duplicateOnDropRef.current = false
-                dropIntentRef.current = null
-                setDropIntent(null)
-              }}
-              title="Glisser au centre d’un département pour l’y rattacher"
-            >
-              <GripVertical className="drag-handle" size={14} />
-              <span className="hierarchy-branch" aria-hidden="true" />
-              <span className="nav-dot" />
-              <span
-                className="nav-label"
-                contentEditable
-                suppressContentEditableWarning
-                role="textbox"
-                aria-label={`Renommer ${node.title}`}
-                spellCheck={false}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => { event.stopPropagation(); selectNode(node.id, event.ctrlKey || event.metaKey) }}
-                onBlur={(event) => {
-                  const title = event.currentTarget.textContent?.trim()
-                  if (title && title !== node.title) updateNodeById(node.id, { title })
-                  else if (!title) event.currentTarget.textContent = node.title
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    event.currentTarget.blur()
-                  }
-                }}
-              >{node.title}</span>
-              <small>{node.members.length}</small>
-            </button>
-          ))}
+          {structureChildren(null).map((node) => renderStructureBranch(node))}
         </nav>
         <button className="add-block" onClick={addNode}><Plus size={17} /> Ajouter un département</button>
       </aside>

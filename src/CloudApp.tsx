@@ -1,7 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { Copy, FilePlus2, FolderOpen, LayoutDashboard, LogOut, RefreshCw, Trash2 } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
-import App from './App'
+import App, { normalizeChart } from './App'
 import { sampleChart } from './sampleData'
 import { isSupabaseConfigured, supabase } from './supabase'
 import type { OrgChart } from './types'
@@ -73,7 +73,14 @@ function Library({ session, onOpen }: { session: Session; onOpen: (record: Cloud
     setError('')
     const { data, error: queryError } = await supabase.from('org_charts').select('id,file_name,title,chart,created_at,updated_at').order('updated_at', { ascending: false })
     if (queryError) setError(queryError.code === 'PGRST205' ? 'La base Supabase doit encore être initialisée avec la migration fournie.' : queryError.message)
-    else setCharts((data ?? []) as CloudChart[])
+    else {
+      const validCharts = (data ?? []).flatMap((record) => {
+        const chart = normalizeChart(record.chart)
+        return chart ? [{ ...record, chart } as CloudChart] : []
+      })
+      setCharts(validCharts)
+      if (validCharts.length !== (data ?? []).length) setError('Un document présentant une hiérarchie invalide a été isolé pour éviter toute confusion.')
+    }
     setLoading(false)
   }, [])
 
