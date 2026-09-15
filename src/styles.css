@@ -307,10 +307,7 @@ button { color: inherit; }
 .org-card.function-group-card:hover { box-shadow: none; transform: none; }
 .org-card.function-group-card.selected { box-shadow: none; }
 .org-card.function-group-card > .members { background: transparent; }
-.org-card.function-group-card > .members { margin-top: 28px; }
 .org-card.function-group-card .member { overflow: hidden; border: 1px solid #e0ded8; border-radius: 5px; background: #fff; box-shadow: 0 4px 12px #2f35400d; }
-.group-entry-connectors { position: absolute; z-index: 1; top: 0; left: 0; overflow: visible; pointer-events: none; }
-.group-entry-connectors path { fill: none; stroke: #aeb2b5; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 .connector-node-control { position: absolute; z-index: 5; width: 30px; transform: translateX(-15px); pointer-events: auto; }
 .connector-node-control::before { position: absolute; width: 12px; inset: 0 auto 0 9px; content: ''; }
 .connector-node-actions { position: absolute; top: 50%; left: 50%; display: flex; gap: 4px; padding: 4px; border: 1px solid #d8dade; border-radius: 9px; background: #fff; box-shadow: 0 5px 18px #252b351f; opacity: 0; transform: translate(-50%, -50%) scale(.92); transition: opacity .14s, transform .14s; pointer-events: none; }

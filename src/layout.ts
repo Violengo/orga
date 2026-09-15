@@ -3,7 +3,7 @@ import type { Member, OrgNode, PositionedNode } from './types'
 export const CARD_WIDTH = 230
 export const WIDE_CARD_WIDTH = 480
 export const COLUMN_GAP = 10
-export const FUNCTION_GROUP_INSET = 28
+export const FUNCTION_GROUP_INSET = 0
 const H_GAP = 36
 const V_GAP = 88
 const MARGIN = 54
@@ -315,7 +315,7 @@ export function layoutNodes(nodes: OrgNode[]) {
     const positionedGroup: PositionedNode = {
       ...group,
       x: parent.x + parent.width / 2 + side * distance - width / 2,
-      y: parent.y + parent.height + 28,
+      y: Math.max(...positioned.filter((candidate) => candidate.depth === parent.depth).map((candidate) => candidate.y + candidate.height)) + 28,
       width,
       height,
       depth: parent.depth + .5,

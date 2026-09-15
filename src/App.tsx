@@ -26,7 +26,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { COLUMN_GAP, departmentIconType, FUNCTION_GROUP_INSET, hasMemberHierarchy, layoutNodes, memberBox, memberColumns, memberHeight, memberNames, memberRoleHeight, memberTreeLayout, nodeHeaderHeight, nodeTitleLines, roleLineCount, wrapTextLines } from './layout'
+import { COLUMN_GAP, departmentIconType, hasMemberHierarchy, layoutNodes, memberBox, memberColumns, memberHeight, memberNames, memberRoleHeight, memberTreeLayout, nodeHeaderHeight, nodeTitleLines, roleLineCount, wrapTextLines } from './layout'
 import { brandLogos, getBrandLogo } from './brandLogos'
 import { sampleChart } from './sampleData'
 import type { Member, OrgChart, OrgNode, PositionedNode } from './types'
@@ -78,6 +78,24 @@ function roundedConnectorPath(x1: number, y1: number, x2: number, y2: number, la
   const direction = Math.sign(x2 - x1)
   const radius = Math.min(14, Math.abs(x2 - x1) / 2, Math.abs(mid - y1) / 2, Math.abs(y2 - mid) / 2)
   return `M ${x1} ${y1} V ${mid - radius} Q ${x1} ${mid} ${x1 + direction * radius} ${mid} H ${x2 - direction * radius} Q ${x2} ${mid} ${x2} ${mid + radius} V ${y2}`
+}
+
+function lateralConnectorPath(x1: number, y1: number, x2: number, y2: number) {
+  const direction = Math.sign(x2 - x1) || 1
+  const radius = Math.min(14, Math.abs(x2 - x1) / 2, Math.abs(y2 - y1) / 2)
+  return `M ${x1} ${y1} V ${y2 - radius} Q ${x1} ${y2} ${x1 + direction * radius} ${y2} H ${x2}`
+}
+
+function functionGroupRootAnchors(node: PositionedNode) {
+  if (node.kind !== 'function-group') return []
+  const tree = memberTreeLayout(node, node.width)
+  const ids = new Set(tree.members.map((member) => member.id))
+  return tree.members
+    .filter((member) => !member.parentMemberId || !ids.has(member.parentMemberId))
+    .map((member) => ({
+      x: node.connectorSide === 'left' ? node.x + member.x + member.width : node.x + member.x,
+      y: node.y + member.y + memberRoleHeight(member, member.width) / 2,
+    }))
 }
 
 function connectorLane(nodes: PositionedNode[], parent: PositionedNode, childDepth: number) {
@@ -295,6 +313,12 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
     if (!parent) return
     const x1 = connectorSource(parent, node).x
     const y1 = parent.y + parent.height
+    if (node.kind === 'function-group') {
+      functionGroupRootAnchors(node).forEach((anchor) => {
+        context.stroke(new Path2D(lateralConnectorPath(x1, y1, anchor.x, anchor.y)))
+      })
+      return
+    }
     const x2 = connectorTargetX(parent, node)
     const y2 = node.y
     const mid = connectorLane(layout.nodes, parent, node.depth)
@@ -383,18 +407,6 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
       const titleLines = nodeTitleLines(node).map((line) => line.toUpperCase())
       const titleStartY = node.y + headerHeight - 11 - (titleLines.length - 1) * 7
       titleLines.forEach((line, index) => context.fillText(line, node.x + node.width / 2, titleStartY + index * 14))
-    }
-
-    if (isFunctionGroup) {
-      const tree = memberTreeLayout(node, node.width)
-      const memberIds = new Set(tree.members.map((member) => member.id))
-      const roots = tree.members.filter((member) => !member.parentMemberId || !memberIds.has(member.parentMemberId))
-      context.strokeStyle = '#aeb2b5'
-      context.lineWidth = 1.4
-      roots.forEach((member) => {
-        const path = new Path2D(roundedConnectorPath(node.x + node.width / 2, node.y, node.x + member.x + member.width / 2, node.y + FUNCTION_GROUP_INSET, node.y + FUNCTION_GROUP_INSET / 2))
-        context.stroke(path)
-      })
     }
 
     const drawMember = (member: Member, left: number, top: number, width: number) => {
@@ -675,11 +687,6 @@ function NodeCard({
         {iconType && <DepartmentIcon type={iconType} />}
         <textarea spellCheck={false} autoCorrect="off" rows={titleRows} aria-label={`Nom du département ${node.title}`} value={node.title} onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }} onChange={(event) => onUpdateNode({ title: event.target.value })} />
       </header>}
-      {isFunctionGroup && tree && <svg className="group-entry-connectors" width={node.width} height={FUNCTION_GROUP_INSET} aria-hidden="true">
-        {tree.members.filter((member) => !member.parentMemberId || !tree.members.some((candidate) => candidate.id === member.parentMemberId)).map((member) => (
-          <path key={member.id} d={roundedConnectorPath(node.width / 2, 0, member.x + member.width / 2, FUNCTION_GROUP_INSET, FUNCTION_GROUP_INSET / 2)} />
-        ))}
-      </svg>}
       <div className={`members ${columns.length > 1 && !tree ? 'two-columns' : ''} ${tree ? 'function-hierarchy' : ''}`} style={tree ? { height: tree.height } : undefined}>
         {node.members.length === 0 && <button className="empty-member" onClick={(event) => {
           event.stopPropagation()
@@ -1656,6 +1663,9 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
                     const parent = positions.get(node.parentId!)!
                     const x1 = connectorSource(parent, node).x
                     const y1 = parent.y + parent.height
+                    if (node.kind === 'function-group') {
+                      return <g key={node.id}>{functionGroupRootAnchors(node).map((anchor, index) => <path key={index} d={lateralConnectorPath(x1, y1, anchor.x, anchor.y)} />)}</g>
+                    }
                     const x2 = connectorTargetX(parent, node)
                     const y2 = node.y
                     return <path key={node.id} d={roundedConnectorPath(x1, y1, x2, y2, connectorLane(layout.nodes, parent, node.depth))} />
