@@ -123,6 +123,7 @@ export const departmentIconType = (title: string) => {
 export const nodeTitleLines = (node: OrgNode) => wrapTextLines(node.title, Math.max(18, Math.floor((nodeWidth(node) - 24) / 6.2)))
 
 export const nodeHeaderHeight = (node: OrgNode) => {
+  if (node.kind === 'function-group') return 0
   const titleHeight = nodeTitleLines(node).length * 14
   return departmentIconType(node.title) ? 48 + titleHeight : Math.max(38, 18 + titleHeight)
 }
@@ -151,7 +152,9 @@ export const memberBox = (node: OrgNode, memberId: string) => {
 export const nodeHeight = (node: OrgNode) => nodeHeaderHeight(node) + (hasMemberHierarchy(node) ? Math.max(34, memberTreeLayout(node).height) : Math.max(34, ...memberColumns(node).map((column) => column.height)))
 
 export function layoutNodes(nodes: OrgNode[]) {
-  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const functionGroups = nodes.filter((node) => node.kind === 'function-group')
+  const layoutSource = nodes.filter((node) => node.kind !== 'function-group')
+  const byId = new Map(layoutSource.map((node) => [node.id, node]))
   const depths = new Map<string, number>()
 
   const getDepth = (node: OrgNode, seen = new Set<string>()): number => {
@@ -166,9 +169,9 @@ export function layoutNodes(nodes: OrgNode[]) {
     return depth
   }
 
-  nodes.forEach((node) => getDepth(node))
-  const childrenOf = (parentId: string | null) => nodes.filter((node) => node.parentId === parentId)
-  const roots = nodes.filter((node) => !node.parentId || !byId.has(node.parentId))
+  layoutSource.forEach((node) => getDepth(node))
+  const childrenOf = (parentId: string | null) => layoutSource.filter((node) => node.parentId === parentId)
+  const roots = layoutSource.filter((node) => !node.parentId || !byId.has(node.parentId))
   const maxDepth = Math.max(0, ...depths.values())
   const rows = new Map<number, OrgNode[]>()
   const visited = new Set<string>()
@@ -180,14 +183,15 @@ export function layoutNodes(nodes: OrgNode[]) {
     childrenOf(node.id).forEach(visit)
   }
   roots.forEach(visit)
-  nodes.filter((node) => !visited.has(node.id)).forEach(visit)
+  layoutSource.filter((node) => !visited.has(node.id)).forEach(visit)
 
   const rowY = new Map<number, number>()
   let y = 112
   for (let depth = 0; depth <= maxDepth; depth += 1) {
     rowY.set(depth, y)
     const maxHeight = Math.max(60, ...(rows.get(depth) ?? []).map(nodeHeight))
-    y += maxHeight + V_GAP
+    const groupHeight = Math.max(0, ...functionGroups.filter((group) => group.parentId && depths.get(group.parentId) === depth).map(nodeHeight))
+    y += maxHeight + V_GAP + (groupHeight ? groupHeight + 34 : 0)
   }
   const positioned: PositionedNode[] = []
   const positionedById = new Map<string, PositionedNode>()
@@ -296,6 +300,37 @@ export function layoutNodes(nodes: OrgNode[]) {
   const canvasWidth = Math.ceil(Math.max(760, requiredHalfWidth * 2, headerSafeWidth))
   const shiftX = canvasWidth / 2 - rootGroupCenter
   positioned.forEach((node) => { node.x += shiftX })
+
+  const shiftedById = new Map(positioned.map((node) => [node.id, node]))
+  functionGroups.forEach((group) => {
+    const parent = group.parentId ? shiftedById.get(group.parentId) : undefined
+    if (!parent) return
+    const width = nodeWidth(group)
+    const height = nodeHeight(group)
+    const sameSide = functionGroups.filter((candidate) => candidate.parentId === group.parentId && candidate.connectorSide === group.connectorSide)
+    const index = sameSide.findIndex((candidate) => candidate.id === group.id)
+    const side = group.connectorSide === 'left' ? -1 : 1
+    const distance = parent.width / 2 + 42 + width / 2 + index * (width + H_GAP)
+    const positionedGroup: PositionedNode = {
+      ...group,
+      x: parent.x + parent.width / 2 + side * distance - width / 2,
+      y: parent.y + parent.height + 28,
+      width,
+      height,
+      depth: parent.depth + .5,
+    }
+    positioned.push(positionedGroup)
+    shiftedById.set(group.id, positionedGroup)
+  })
+
+  const finalMinX = Math.min(...positioned.map((node) => node.x))
+  const finalMaxX = Math.max(...positioned.map((node) => node.x + node.width))
+  if (finalMinX < MARGIN || finalMaxX > canvasWidth - MARGIN) {
+    const extraLeft = Math.max(0, MARGIN - finalMinX)
+    const extraRight = Math.max(0, finalMaxX - canvasWidth + MARGIN)
+    positioned.forEach((node) => { node.x += extraLeft })
+    return { nodes: positioned, width: Math.ceil(canvasWidth + extraLeft + extraRight), height: Math.max(420, y - V_GAP + MARGIN) }
+  }
 
   return { nodes: positioned, width: canvasWidth, height: Math.max(420, y - V_GAP + MARGIN) }
 }

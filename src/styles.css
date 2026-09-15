@@ -303,6 +303,17 @@ button { color: inherit; }
 .org-card.staff-card > .members:not(.function-hierarchy) { width: min(230px, 100%); margin-inline: auto; }
 .org-card.staff-card > .members { background: transparent; }
 .org-card.staff-card > .members .member { overflow: hidden; border: 1px solid #e9e7e2; border-radius: 5px; background: #fff; }
+.org-card.function-group-card { overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.org-card.function-group-card:hover { box-shadow: none; transform: none; }
+.org-card.function-group-card.selected { box-shadow: none; }
+.org-card.function-group-card > .members { background: transparent; }
+.org-card.function-group-card .member { overflow: hidden; border: 1px solid #e0ded8; border-radius: 5px; background: #fff; box-shadow: 0 4px 12px #2f35400d; }
+.connector-node-control { position: absolute; z-index: 5; width: 30px; transform: translateX(-15px); pointer-events: auto; }
+.connector-node-control::before { position: absolute; width: 12px; inset: 0 auto 0 9px; content: ''; }
+.connector-node-actions { position: absolute; top: 50%; left: 50%; display: flex; gap: 4px; padding: 4px; border: 1px solid #d8dade; border-radius: 9px; background: #fff; box-shadow: 0 5px 18px #252b351f; opacity: 0; transform: translate(-50%, -50%) scale(.92); transition: opacity .14s, transform .14s; pointer-events: none; }
+.connector-node-control:hover .connector-node-actions, .connector-node-control:focus-within .connector-node-actions { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
+.connector-node-actions button { display: flex; height: 25px; padding: 0 5px; align-items: center; color: #59606a; border: 0; border-radius: 6px; background: #f3f4f5; cursor: pointer; }
+.connector-node-actions button:hover, .connector-node-actions button:focus-visible { color: #fff; outline: none; background: var(--accent, #eb5d0b); }
 .members { display: grid; grid-template-columns: 1fr; }
 .members.two-columns { grid-template-columns: 1fr 1fr; column-gap: 10px; }
 .members.two-columns .member-column + .member-column { border-left: 0; }

@@ -12,6 +12,9 @@ export type OrgNode = {
   parentId: string | null
   color?: string
   members: Member[]
+  /** Conteneur sans habillage de département, greffé latéralement sur une liaison. */
+  kind?: 'department' | 'function-group'
+  connectorSide?: 'left' | 'right'
 }
 
 export type OrgChart = {

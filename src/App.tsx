@@ -315,10 +315,11 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
     const accent = node.color || chart.accent
     const iconType = departmentIconType(node.title)
     const isStaff = iconType === 'staff'
+    const isFunctionGroup = node.kind === 'function-group'
     const headerHeight = nodeHeaderHeight(node)
     const headerWidth = isStaff ? Math.min(230, node.width) : node.width
     const headerLeft = node.x + (node.width - headerWidth) / 2
-    if (!isStaff) {
+    if (!isStaff && !isFunctionGroup) {
       context.fillStyle = '#ffffff'
       context.strokeStyle = accent
       context.lineWidth = 1
@@ -327,13 +328,15 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
       context.fill()
       context.stroke()
     }
-    context.save()
-    context.beginPath()
-    context.roundRect(headerLeft, node.y, headerWidth, headerHeight, isStaff ? headerHeight / 2 : 10)
-    context.clip()
-    context.fillStyle = accent
-    context.fillRect(headerLeft, node.y, headerWidth, headerHeight)
-    context.restore()
+    if (!isFunctionGroup) {
+      context.save()
+      context.beginPath()
+      context.roundRect(headerLeft, node.y, headerWidth, headerHeight, isStaff ? headerHeight / 2 : 10)
+      context.clip()
+      context.fillStyle = accent
+      context.fillRect(headerLeft, node.y, headerWidth, headerHeight)
+      context.restore()
+    }
 
     if (iconType) {
       const iconX = node.x + node.width / 2
@@ -369,12 +372,14 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
       }
       context.restore()
     }
-    context.fillStyle = '#ffffff'
-    context.font = '700 10px "Open Sans", sans-serif'
-    context.textAlign = 'center'
-    const titleLines = nodeTitleLines(node).map((line) => line.toUpperCase())
-    const titleStartY = node.y + headerHeight - 11 - (titleLines.length - 1) * 7
-    titleLines.forEach((line, index) => context.fillText(line, node.x + node.width / 2, titleStartY + index * 14))
+    if (!isFunctionGroup) {
+      context.fillStyle = '#ffffff'
+      context.font = '700 10px "Open Sans", sans-serif'
+      context.textAlign = 'center'
+      const titleLines = nodeTitleLines(node).map((line) => line.toUpperCase())
+      const titleStartY = node.y + headerHeight - 11 - (titleLines.length - 1) * 7
+      titleLines.forEach((line, index) => context.fillText(line, node.x + node.width / 2, titleStartY + index * 14))
+    }
 
     const drawMember = (member: Member, left: number, top: number, width: number) => {
         const height = memberHeight(member, width)
@@ -432,7 +437,7 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
 
     // La bordure est tracée en dernier : les aplats des fonctions ne peuvent
     // ainsi plus recouvrir le trait inférieur ni ses angles arrondis à l’export.
-    if (!isStaff) {
+    if (!isStaff && !isFunctionGroup) {
       context.strokeStyle = accent
       context.lineWidth = 1
       context.beginPath()
@@ -604,6 +609,7 @@ function NodeCard({
   const tree = hasMemberHierarchy(node) ? memberTreeLayout(node, node.width) : null
   const iconType = departmentIconType(node.title)
   const isStaff = iconType === 'staff'
+  const isFunctionGroup = node.kind === 'function-group'
   const titleRows = nodeTitleLines(node).length
   const renderMember = (member: Member, width: number, style?: CSSProperties) => <div className="member" key={member.id} style={style}>
     <div className="member-role-row">
@@ -638,14 +644,14 @@ function NodeCard({
   </div>
   return (
     <article
-      className={`org-card ${isStaff ? 'staff-card' : ''} ${selected ? 'selected' : ''} ${dimmed ? 'dimmed' : ''}`}
+      className={`org-card ${isStaff ? 'staff-card' : ''} ${isFunctionGroup ? 'function-group-card' : ''} ${selected ? 'selected' : ''} ${dimmed ? 'dimmed' : ''}`}
       style={{ left: node.x, top: node.y, width: node.width, minHeight: node.height, '--node-accent': node.color || accent } as React.CSSProperties}
       onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey) }}
     >
-      <header className={iconType ? 'with-department-icon' : ''}>
+      {!isFunctionGroup && <header className={iconType ? 'with-department-icon' : ''}>
         {iconType && <DepartmentIcon type={iconType} />}
         <textarea spellCheck={false} autoCorrect="off" rows={titleRows} aria-label={`Nom du département ${node.title}`} value={node.title} onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }} onChange={(event) => onUpdateNode({ title: event.target.value })} />
-      </header>
+      </header>}
       <div className={`members ${columns.length > 1 && !tree ? 'two-columns' : ''} ${tree ? 'function-hierarchy' : ''}`} style={tree ? { height: tree.height } : undefined}>
         {node.members.length === 0 && <button className="empty-member" onClick={(event) => {
           event.stopPropagation()
@@ -950,6 +956,21 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     setSelectedId(node.id)
     setSelectedIds(new Set([node.id]))
     setInspectorOpen(true)
+  }
+  const addFunctionGroupOnConnector = (parentId: string, side: 'left' | 'right') => {
+    const node: OrgNode = {
+      id: makeId(),
+      title: 'Branche de fonctions',
+      parentId,
+      kind: 'function-group',
+      connectorSide: side,
+      members: [{ id: makeId(), role: '', name: '', parentMemberId: null }],
+    }
+    setChart((current) => ({ ...current, nodes: [...current.nodes, node] }))
+    setSelectedId(node.id)
+    setSelectedIds(new Set([node.id]))
+    setInspectorOpen(true)
+    showNotice(`Branche ajoutée à ${side === 'left' ? 'gauche' : 'droite'}`)
   }
   const cloneNode = (node: OrgNode, parentId = node.parentId): OrgNode => ({
     ...node,
@@ -1353,7 +1374,8 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
           if (event.buttons !== 1 || draggedId !== node.id) return
           const targetElement = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-node-id]')
           const targetId = targetElement?.dataset.nodeId
-          if (!targetElement || !targetId || targetId === node.id) {
+          const targetNode = chart.nodes.find((candidate) => candidate.id === targetId)
+          if (!targetElement || !targetId || targetId === node.id || targetNode?.kind === 'function-group') {
             dropIntentRef.current = null
             setDropIntent(null)
             return
@@ -1576,6 +1598,18 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
                     return <path key={node.id} d={roundedConnectorPath(x1, y1, x2, y2, connectorLane(layout.nodes, parent, node.depth))} />
                   })}
                 </svg>
+                {layout.nodes.filter((parent) => parent.kind !== 'function-group' && layout.nodes.some((child) => child.parentId === parent.id && child.kind !== 'function-group')).map((parent) => {
+                  const children = layout.nodes.filter((child) => child.parentId === parent.id && child.kind !== 'function-group')
+                  const stemEnd = Math.min(...children.map((child) => connectorLane(layout.nodes, parent, child.depth)))
+                  const top = parent.y + parent.height + 4
+                  const height = Math.max(28, stemEnd - top - 4)
+                  return <div key={`control-${parent.id}`} className="connector-node-control" style={{ left: parent.x + parent.width / 2, top, height }} onClick={(event) => event.stopPropagation()}>
+                    <div className="connector-node-actions">
+                      <button onClick={() => addFunctionGroupOnConnector(parent.id, 'left')} title="Ajouter une branche de fonctions à gauche" aria-label="Ajouter une branche de fonctions à gauche"><ChevronLeft size={13} /><Plus size={12} /></button>
+                      <button onClick={() => addFunctionGroupOnConnector(parent.id, 'right')} title="Ajouter une branche de fonctions à droite" aria-label="Ajouter une branche de fonctions à droite"><Plus size={12} /><ChevronRight size={13} /></button>
+                    </div>
+                  </div>
+                })}
                 {layout.nodes.map((node) => <NodeCard
                   key={node.id}
                   node={node}
@@ -1628,7 +1662,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
           <div className="selected-chips">{selectedNodes.map((node) => <span key={node.id}>{node.title}</span>)}</div>
           <div className="field-control"><span>Rattacher la sélection à</span><Dropdown label="Rattacher la sélection à" value={bulkParentId} onChange={setBulkParentId} options={[
             { value: '', label: 'Racine de l’organigramme' },
-            ...chart.nodes.filter((node) => !bulkInvalidParentIds.has(node.id)).map((node) => ({ value: node.id, label: node.title })),
+            ...chart.nodes.filter((node) => node.kind !== 'function-group' && !bulkInvalidParentIds.has(node.id)).map((node) => ({ value: node.id, label: node.title })),
           ]} /></div>
           <button className="button primary bulk-attach" onClick={attachSelectedNodes}>Rattacher {selectedIds.size} départements</button>
           <p className="editor-hint">Ctrl+clic permet d’ajouter ou retirer un bloc de cette sélection.</p>
@@ -1636,10 +1670,10 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
         {selected && selectedIds.size === 1 && <>
           <section className="form-section">
             <div className="section-title"><span>Bloc sélectionné</span><button className="danger-icon" onClick={deleteNode} title="Supprimer"><Trash2 size={16} /></button></div>
-            <label>Nom<input spellCheck={false} autoCorrect="off" value={selected.title} onChange={(e) => updateNode({ title: e.target.value })} /></label>
+            {selected.kind !== 'function-group' && <label>Nom<input spellCheck={false} autoCorrect="off" value={selected.title} onChange={(e) => updateNode({ title: e.target.value })} /></label>}
             <div className="field-control"><span>Rattaché à</span><Dropdown label="Rattaché à" value={selected.parentId ?? ''} onChange={(value) => updateNode({ parentId: value || null })} options={[
               { value: '', label: 'Racine' },
-              ...chart.nodes.filter((node) => !invalidParentIds.has(node.id)).map((node) => ({ value: node.id, label: node.title })),
+              ...chart.nodes.filter((node) => node.kind !== 'function-group' && !invalidParentIds.has(node.id)).map((node) => ({ value: node.id, label: node.title })),
             ]} /></div>
             <div className={`order-controls ${canReorderSelected ? '' : 'disabled'}`}><span>Ordre à ce niveau</span><div><button disabled={!canReorderSelected} onClick={() => moveSelected(-1)} aria-label="Déplacer vers la gauche"><ChevronLeft size={16} /></button><button disabled={!canReorderSelected} onClick={() => moveSelected(1)} aria-label="Déplacer vers la droite"><ChevronRight size={16} /></button></div></div>
           </section>
