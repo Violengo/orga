@@ -265,13 +265,33 @@ export function layoutNodes(nodes: OrgNode[]) {
   roots.forEach(visit)
   layoutSource.filter((node) => !visited.has(node.id)).forEach(visit)
 
+  const visibleColumnCount = (node: OrgNode) => departmentHead(node) || isWideNode(node) ? 2 : 1
+  const packDepartmentRows = (row: OrgNode[]) => {
+    const packs: OrgNode[][] = []
+    let current: OrgNode[] = []
+    let columns = 0
+    row.forEach((node) => {
+      const nodeColumns = visibleColumnCount(node)
+      if (current.length && columns + nodeColumns > 4) {
+        packs.push(current)
+        current = []
+        columns = 0
+      }
+      current.push(node)
+      columns += nodeColumns
+    })
+    if (current.length) packs.push(current)
+    return packs
+  }
+
   const rowY = new Map<number, number>()
   let y = 112
   for (let depth = 0; depth <= maxDepth; depth += 1) {
     rowY.set(depth, y)
-    const maxHeight = Math.max(60, ...(rows.get(depth) ?? []).map(nodeHeight))
+    const packs = packDepartmentRows(rows.get(depth) ?? [])
+    const packedHeight = packs.reduce((total, pack, index) => total + Math.max(60, ...pack.map(nodeHeight)) + (index ? V_GAP : 0), 0)
     const groupHeight = Math.max(0, ...functionGroups.filter((group) => group.parentId && depths.get(group.parentId) === depth).map(nodeHeight))
-    y += maxHeight + V_GAP + (groupHeight ? groupHeight + 34 : 0)
+    y += packedHeight + V_GAP + (groupHeight ? groupHeight + 34 : 0)
   }
   const positioned: PositionedNode[] = []
   const positionedById = new Map<string, PositionedNode>()
@@ -321,47 +341,39 @@ export function layoutNodes(nodes: OrgNode[]) {
         return leftParentX - rightParentX
       })
     }
-    const desiredLeft: number[] = []
     const siblingGroups = new Map<string, OrgNode[]>()
     row.forEach((node) => {
       const key = node.parentId ?? '__root__'
       siblingGroups.set(key, [...(siblingGroups.get(key) ?? []), node])
     })
 
-    row.forEach((node, index) => {
-      const width = nodeWidth(node)
-      if (depth === 0 || !node.parentId || !positionedById.has(node.parentId)) {
-        const rootWidth = row.reduce((total, item) => total + nodeWidth(item), 0) + Math.max(0, row.length - 1) * H_GAP
-        const precedingWidth = row.slice(0, index).reduce((total, item) => total + nodeWidth(item) + H_GAP, 0)
-        desiredLeft[index] = -rootWidth / 2 + precedingWidth
-        return
-      }
-      const parent = positionedById.get(node.parentId)!
-      const siblings = siblingGroups.get(node.parentId) ?? [node]
-      const groupWidth = siblings.reduce((total, item) => total + nodeWidth(item), 0) + Math.max(0, siblings.length - 1) * H_GAP
-      const siblingIndex = siblings.findIndex((item) => item.id === node.id)
-      const precedingWidth = siblings.slice(0, siblingIndex).reduce((total, item) => total + nodeWidth(item) + H_GAP, 0)
-      // C’est l’encombrement complet du groupe qui est centré sur le parent.
-      // Une carte large placée à une extrémité ne crée donc plus de vide artificiel.
-      const groupStart = parent.x + parent.width / 2 - groupWidth / 2
-      desiredLeft[index] = groupStart + precedingWidth
-    })
-
-    const resolvedLeft = resolveRowCollisions(row, desiredLeft)
-    const rowMinX = Math.min(...resolvedLeft)
-    const rowMaxX = Math.max(...row.map((node, index) => resolvedLeft[index] + nodeWidth(node)))
-    const rowShift = -(rowMinX + rowMaxX) / 2
-    row.forEach((node, index) => {
-      const positionedNode: PositionedNode = {
-        ...node,
-        x: resolvedLeft[index] + rowShift,
-        y: rowY.get(depth) ?? 112,
-        width: nodeWidth(node),
-        height: nodeHeight(node),
-        depth,
-      }
-      positioned.push(positionedNode)
-      positionedById.set(node.id, positionedNode)
+    let packTop = rowY.get(depth) ?? 112
+    packDepartmentRows(row).forEach((pack) => {
+      const desiredLeft: number[] = []
+      pack.forEach((node, index) => {
+        if (depth === 0 || !node.parentId || !positionedById.has(node.parentId)) {
+          const packWidth = pack.reduce((total, item) => total + nodeWidth(item), 0) + Math.max(0, pack.length - 1) * H_GAP
+          const precedingWidth = pack.slice(0, index).reduce((total, item) => total + nodeWidth(item) + H_GAP, 0)
+          desiredLeft[index] = -packWidth / 2 + precedingWidth
+          return
+        }
+        const parent = positionedById.get(node.parentId)!
+        const siblings = (siblingGroups.get(node.parentId) ?? [node]).filter((sibling) => pack.some((item) => item.id === sibling.id))
+        const groupWidth = siblings.reduce((total, item) => total + nodeWidth(item), 0) + Math.max(0, siblings.length - 1) * H_GAP
+        const siblingIndex = siblings.findIndex((item) => item.id === node.id)
+        const precedingWidth = siblings.slice(0, siblingIndex).reduce((total, item) => total + nodeWidth(item) + H_GAP, 0)
+        desiredLeft[index] = parent.x + parent.width / 2 - groupWidth / 2 + precedingWidth
+      })
+      const resolvedLeft = resolveRowCollisions(pack, desiredLeft)
+      const packMinX = Math.min(...resolvedLeft)
+      const packMaxX = Math.max(...pack.map((node, index) => resolvedLeft[index] + nodeWidth(node)))
+      const packShift = -(packMinX + packMaxX) / 2
+      pack.forEach((node, index) => {
+        const positionedNode: PositionedNode = { ...node, x: resolvedLeft[index] + packShift, y: packTop, width: nodeWidth(node), height: nodeHeight(node), depth }
+        positioned.push(positionedNode)
+        positionedById.set(node.id, positionedNode)
+      })
+      packTop += Math.max(60, ...pack.map(nodeHeight)) + V_GAP
     })
   }
 
