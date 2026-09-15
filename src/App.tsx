@@ -451,6 +451,15 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
         const path = new Path2D(roundedConnectorPath(node.x + parent.x + parent.width / 2, bodyTop + parent.y + parent.height, node.x + member.x + member.width / 2, bodyTop + member.y))
         context.stroke(path)
       })
+      if (departmentIconType(node.title) === 'staff') {
+        const centered = tree.members.filter((member) => Math.abs(member.x + member.width / 2 - node.width / 2) < 1).sort((left, right) => right.depth - left.depth)[0]
+        if (centered) {
+          context.beginPath()
+          context.moveTo(node.x + node.width / 2, node.y + headerHeight + centered.y + centered.height)
+          context.lineTo(node.x + node.width / 2, node.y + node.height + 3)
+          context.stroke()
+        }
+      }
       tree.members.forEach((member) => drawMember(member, node.x + member.x, node.y + headerHeight + member.y, member.width))
     } else {
       const columns = memberColumns(node)
@@ -731,6 +740,10 @@ function NodeCard({
               if (!parent) return null
               return <path key={member.id} d={roundedConnectorPath(parent.x + parent.width / 2, parent.y + parent.height, member.x + member.width / 2, member.y)} />
             })}
+            {isStaff && (() => {
+              const centered = tree.members.filter((member) => Math.abs(member.x + member.width / 2 - node.width / 2) < 1).sort((left, right) => right.depth - left.depth)[0]
+              return centered ? <path d={`M ${node.width / 2} ${centered.y + centered.height} V ${tree.height + 3}`} /> : null
+            })()}
           </svg>
           {tree.members.map((member) => renderMember(member, member.width, { position: 'absolute', left: member.x, top: member.y, width: member.width, minHeight: member.height }))}
         </>}
