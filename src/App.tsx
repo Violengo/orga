@@ -26,7 +26,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { COLUMN_GAP, departmentIconType, hasMemberHierarchy, layoutNodes, memberColumns, memberHeight, memberNames, memberRoleHeight, memberTreeLayout, nodeHeaderHeight, nodeTitleLines, roleLineCount, wrapTextLines } from './layout'
+import { COLUMN_GAP, departmentIconType, hasMemberHierarchy, layoutNodes, memberBox, memberColumns, memberHeight, memberNames, memberRoleHeight, memberTreeLayout, nodeHeaderHeight, nodeTitleLines, roleLineCount, wrapTextLines } from './layout'
 import { brandLogos, getBrandLogo } from './brandLogos'
 import { sampleChart } from './sampleData'
 import type { Member, OrgChart, OrgNode, PositionedNode } from './types'
@@ -100,6 +100,30 @@ function connectorTargetX(parent: PositionedNode, child: PositionedNode) {
   // un ancrage légèrement à gauche, suffisamment marqué pour être élégant.
   if (Math.abs(delta) >= .5 && Math.abs(delta) < 28) return childCenter - Math.min(34, child.width * .16)
   return childCenter
+}
+
+function normalizedLabel(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr').replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function operatorsAnchorMember(parent: OrgNode, child: OrgNode) {
+  if (normalizedLabel(child.title) !== 'operators') return null
+  const supervisors = parent.members.filter((member) => normalizedLabel(member.role).includes('area supervisor'))
+  return supervisors.find((member) => {
+    const role = normalizedLabel(member.role)
+    return role.includes('account supervisor') && role.includes('site supervisor')
+  }) ?? supervisors.find((member) => {
+    const role = normalizedLabel(member.role)
+    return role.includes('account supervisor') || role.includes('site supervisor')
+  }) ?? supervisors[0] ?? null
+}
+
+function connectorSource(parent: PositionedNode, child: PositionedNode) {
+  const member = operatorsAnchorMember(parent, child)
+  const box = member ? memberBox(parent, member.id) : null
+  return {
+    x: box ? parent.x + box.x + box.width / 2 : parent.x + parent.width / 2,
+  }
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -265,7 +289,7 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
     if (!node.parentId) return
     const parent = positioned.get(node.parentId)
     if (!parent) return
-    const x1 = parent.x + parent.width / 2
+    const x1 = connectorSource(parent, node).x
     const y1 = parent.y + parent.height
     const x2 = connectorTargetX(parent, node)
     const y2 = node.y
@@ -391,6 +415,20 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
         column.members.forEach((member) => { top += drawMember(member, left, top, columnWidth) })
       })
     }
+
+    chart.nodes.filter((child) => child.parentId === node.id).forEach((child) => {
+      const member = operatorsAnchorMember(node, child)
+      const box = member ? memberBox(node, member.id) : null
+      if (!box) return
+      const x = node.x + box.x + box.width / 2
+      const y = node.y + box.y + box.height
+      context.strokeStyle = '#aeb2b5'
+      context.lineWidth = 1.4
+      context.beginPath()
+      context.moveTo(x, y)
+      context.lineTo(x, node.y + node.height)
+      context.stroke()
+    })
 
     // La bordure est tracée en dernier : les aplats des fonctions ne peuvent
     // ainsi plus recouvrir le trait inférieur ni ses angles arrondis à l’export.
@@ -547,6 +585,7 @@ function NodeCard({
   onAddCollaborator,
   onUpdateCollaborator,
   onRemoveCollaborator,
+  anchoredMemberIds,
 }: {
   node: PositionedNode
   accent: string
@@ -559,6 +598,7 @@ function NodeCard({
   onAddCollaborator: (memberId: string) => void
   onUpdateCollaborator: (memberId: string, index: number, value: string) => void
   onRemoveCollaborator: (memberId: string, index: number) => void
+  anchoredMemberIds: string[]
 }) {
   const columns = memberColumns(node)
   const tree = hasMemberHierarchy(node) ? memberTreeLayout(node, node.width) : null
@@ -634,6 +674,11 @@ function NodeCard({
           {column.members.map((member) => renderMember(member, columnWidth))}
         </div>})}
       </div>
+      {anchoredMemberIds.map((memberId) => {
+        const box = memberBox(node, memberId)
+        if (!box) return null
+        return <span key={memberId} className="member-department-anchor" style={{ left: box.x + box.width / 2, top: box.y + box.height, height: Math.max(0, node.height - box.y - box.height) }} />
+      })}
     </article>
   )
 }
@@ -1524,7 +1569,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
                 <svg className="connectors" width={layout.width} height={layout.height} aria-hidden="true">
                   {layout.nodes.filter((node) => node.parentId && positions.has(node.parentId)).map((node) => {
                     const parent = positions.get(node.parentId!)!
-                    const x1 = parent.x + parent.width / 2
+                    const x1 = connectorSource(parent, node).x
                     const y1 = parent.y + parent.height
                     const x2 = connectorTargetX(parent, node)
                     const y2 = node.y
@@ -1544,6 +1589,10 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
                   onAddCollaborator={(memberId) => addCollaborator(node.id, memberId)}
                   onUpdateCollaborator={(memberId, index, value) => updateCollaborator(node.id, memberId, index, value)}
                   onRemoveCollaborator={(memberId, index) => removeCollaborator(node.id, memberId, index)}
+                  anchoredMemberIds={chart.nodes
+                    .filter((child) => child.parentId === node.id)
+                    .map((child) => operatorsAnchorMember(node, child)?.id)
+                    .filter((memberId): memberId is string => Boolean(memberId))}
                 />)}
                 <span className="version">{chart.version}</span>
               </div>

@@ -326,6 +326,7 @@ button { color: inherit; }
 .function-hierarchy > .member { z-index: 2; overflow: hidden; border: 1px solid #e9e7e2; border-radius: 5px; background: #fff; }
 .function-connectors { position: absolute; z-index: 1; inset: 0; overflow: visible; pointer-events: none; }
 .function-connectors path { fill: none; stroke: #aeb2b5; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.member-department-anchor { position: absolute; z-index: 3; width: 0; border-left: 1.2px solid #aeb2b5; pointer-events: none; }
 .no-collaborator { color: #a4a7ab; font-size: 8.5px; line-height: 14px; font-style: italic; }
 .empty-member { display: flex; width: 100%; min-height: 34px; grid-column: 1 / -1; align-items: center; justify-content: center; gap: 4px; padding: 8px; color: #9a9da2; border: 0; background: #fff; font-size: 8.5px; text-align: center; cursor: pointer; }
 .empty-member:hover, .empty-member:focus-visible { color: var(--node-accent); outline: none; background: color-mix(in srgb, var(--node-accent) 6%, #fff); }

@@ -127,6 +127,27 @@ export const nodeHeaderHeight = (node: OrgNode) => {
   return departmentIconType(node.title) ? 48 + titleHeight : Math.max(38, 18 + titleHeight)
 }
 
+export const memberBox = (node: OrgNode, memberId: string) => {
+  const headerHeight = nodeHeaderHeight(node)
+  const width = nodeWidth(node)
+  if (hasMemberHierarchy(node)) {
+    const member = memberTreeLayout(node, width).members.find((candidate) => candidate.id === memberId)
+    return member ? { x: member.x, y: headerHeight + member.y, width: member.width, height: member.height } : null
+  }
+  const columns = memberColumns(node)
+  const columnGap = columns.length > 1 ? COLUMN_GAP : 0
+  const columnWidth = (width - columnGap * (columns.length - 1)) / columns.length
+  for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
+    let top = headerHeight
+    for (const member of columns[columnIndex].members) {
+      const height = memberHeight(member, columnWidth)
+      if (member.id === memberId) return { x: columnIndex * (columnWidth + columnGap), y: top, width: columnWidth, height }
+      top += height
+    }
+  }
+  return null
+}
+
 export const nodeHeight = (node: OrgNode) => nodeHeaderHeight(node) + (hasMemberHierarchy(node) ? Math.max(34, memberTreeLayout(node).height) : Math.max(34, ...memberColumns(node).map((column) => column.height)))
 
 export function layoutNodes(nodes: OrgNode[]) {
