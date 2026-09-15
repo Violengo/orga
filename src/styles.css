@@ -310,6 +310,10 @@ button { color: inherit; }
 .member-name-row button { display: grid; width: 14px; height: 14px; flex: 0 0 auto; padding: 0; place-items: center; color: #b0b3b7; border: 0; border-radius: 3px; background: transparent; cursor: pointer; opacity: 0; }
 .member-name-row:hover button, .member-name-row:focus-within button { opacity: 1; }
 .member-name-row button:hover { color: #b93c3c; background: #fff0f0; }
+.members.function-hierarchy { position: relative; display: block; overflow: visible; background: #fff; }
+.function-hierarchy > .member { z-index: 2; overflow: hidden; border: 1px solid #e9e7e2; border-radius: 5px; background: #fff; }
+.function-connectors { position: absolute; z-index: 1; inset: 0; overflow: visible; pointer-events: none; }
+.function-connectors path { fill: none; stroke: #aeb2b5; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 .no-collaborator { color: #a4a7ab; font-size: 8.5px; line-height: 14px; font-style: italic; }
 .empty-member { display: flex; width: 100%; min-height: 34px; grid-column: 1 / -1; align-items: center; justify-content: center; gap: 4px; padding: 8px; color: #9a9da2; border: 0; background: #fff; font-size: 8.5px; text-align: center; cursor: pointer; }
 .empty-member:hover, .empty-member:focus-visible { color: var(--node-accent); outline: none; background: color-mix(in srgb, var(--node-accent) 6%, #fff); }
@@ -360,6 +364,12 @@ button { color: inherit; }
 .person-editor-actions .remove-function:hover { color: #b93c3c; background: #fff0f0; }
 .person-editor input, .person-editor textarea { min-height: 31px !important; padding: 7px 9px !important; font-size: 11px; line-height: 1.3; }
 .person-editor > input { padding-right: 74px !important; }
+.function-parent-control { display: grid; gap: 5px; margin-top: 3px; }
+.function-parent-control > span { color: #858a92; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.function-parent-control .custom-dropdown-trigger { min-height: 34px; padding: 7px 10px; font-size: 11px; }
+.function-add-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.function-add-actions button { display: flex; min-height: 31px; align-items: center; justify-content: center; gap: 4px; border: 1px solid #dfe1e4; border-radius: 7px; color: #666c74; background: #fff; font-size: 10px; font-weight: 700; cursor: pointer; }
+.function-add-actions button:hover { border-color: var(--accent, #eb5d0b); color: #eb5d0b; background: #fff7f2; }
 .empty-people { padding: 12px; color: #7d8187; border: 1px dashed #d1d3d6; border-radius: 7px; background: transparent; cursor: pointer; }
 .add-person { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; color: #dc5308; border: 1px dashed #f0a178; border-radius: 7px; background: #fff8f4; cursor: pointer; }
 .selected-chips { display: flex; flex-wrap: wrap; gap: 5px; }

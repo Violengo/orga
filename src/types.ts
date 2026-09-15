@@ -2,6 +2,8 @@ export type Member = {
   id: string
   role: string
   name: string
+  /** undefined = disposition historique en liste ; null = racine d’une arborescence de fonctions */
+  parentMemberId?: string | null
 }
 
 export type OrgNode = {

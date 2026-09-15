@@ -5,6 +5,7 @@ Premier socle d'une application web spécialisée dans la création et l'export 
 ## Fonctionnalités actuelles
 
 - édition de la structure hiérarchique et des collaborateurs ;
+- arborescences de fonctions à plusieurs niveaux au sein d’un département ;
 - recalcul automatique de l'agencement par sous-arbre, sans croisement entre familles ;
 - réorganisation des blocs frères par glisser-déposer ou commandes monter/descendre ;
 - vue organigramme et vue liste adaptée aux petits écrans ;

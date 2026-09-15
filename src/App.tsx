@@ -26,7 +26,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { COLUMN_GAP, departmentIconType, layoutNodes, memberColumns, memberHeight, memberNames, memberRoleHeight, nodeHeaderHeight, nodeTitleLines, roleLineCount, wrapTextLines } from './layout'
+import { COLUMN_GAP, departmentIconType, hasMemberHierarchy, layoutNodes, memberColumns, memberHeight, memberNames, memberRoleHeight, memberTreeLayout, nodeHeaderHeight, nodeTitleLines, roleLineCount, wrapTextLines } from './layout'
 import { brandLogos, getBrandLogo } from './brandLogos'
 import { sampleChart } from './sampleData'
 import type { Member, OrgChart, OrgNode, PositionedNode } from './types'
@@ -142,7 +142,16 @@ function normalizeChart(value: unknown): OrgChart | null {
     logo: brand?.src ?? (typeof candidate.logo === 'string' ? candidate.logo : undefined),
     customLogo: typeof candidate.customLogo === 'string' ? candidate.customLogo : logoId === 'custom' && candidate.logo && candidate.logo !== CUSTOM_LOGO_PLACEHOLDER ? candidate.logo : undefined,
     customAccent: typeof candidate.customAccent === 'string' ? candidate.customAccent : undefined,
-    nodes: candidate.nodes,
+    nodes: candidate.nodes.map((node) => {
+      const memberIds = new Set(node.members.map((member) => member.id))
+      return {
+        ...node,
+        members: node.members.map((member) => ({
+          ...member,
+          ...(member.parentMemberId !== undefined ? { parentMemberId: member.parentMemberId && memberIds.has(member.parentMemberId) ? member.parentMemberId : null } : {}),
+        })),
+      }
+    }),
   }
 }
 
@@ -323,30 +332,45 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
     const titleStartY = node.y + headerHeight - 11 - (titleLines.length - 1) * 7
     titleLines.forEach((line, index) => context.fillText(line, node.x + node.width / 2, titleStartY + index * 14))
 
-    const columns = memberColumns(node)
-    const columnGap = columns.length > 1 ? COLUMN_GAP : 0
-    columns.forEach((column, columnIndex) => {
-      const columnWidth = (node.width - columnGap * (columns.length - 1)) / columns.length
-      const left = node.x + columnIndex * (columnWidth + columnGap)
-      let top = node.y + headerHeight
-      column.members.forEach((member) => {
-        const height = memberHeight(member, columnWidth)
-        const roleHeight = memberRoleHeight(member, columnWidth)
-        const roleLines = wrapTextLines(member.role, Math.max(16, Math.floor((columnWidth - 30) / 5.4)))
+    const drawMember = (member: Member, left: number, top: number, width: number) => {
+        const height = memberHeight(member, width)
+        const roleHeight = memberRoleHeight(member, width)
+        const roleLines = wrapTextLines(member.role, Math.max(16, Math.floor((width - 30) / 5.4)))
         context.fillStyle = '#dedcd4'
-        context.fillRect(left + 1, top, columnWidth - 2, roleHeight)
+        context.fillRect(left + 1, top, width - 2, roleHeight)
         context.fillStyle = '#50565f'
         context.font = '700 9px "Open Sans", sans-serif'
         const roleStartY = top + roleHeight / 2 - (roleLines.length - 1) * 7 + 3
-        roleLines.forEach((line, index) => context.fillText(line, left + columnWidth / 2, roleStartY + index * 14))
+        roleLines.forEach((line, index) => context.fillText(line, left + width / 2, roleStartY + index * 14))
         context.fillStyle = '#ffffff'
-        context.fillRect(left + 1, top + roleHeight, columnWidth - 2, height - roleHeight)
+        context.fillRect(left + 1, top + roleHeight, width - 2, height - roleHeight)
         context.fillStyle = '#646a72'
         context.font = '9px "Open Sans", sans-serif'
-        memberNames(member.name).forEach((name, nameIndex) => context.fillText(name, left + columnWidth / 2, top + roleHeight + 14 + nameIndex * 14))
-        top += height
+        memberNames(member.name).forEach((name, nameIndex) => context.fillText(name, left + width / 2, top + roleHeight + 14 + nameIndex * 14))
+        return height
+    }
+    if (hasMemberHierarchy(node)) {
+      const tree = memberTreeLayout(node, node.width)
+      context.strokeStyle = '#aeb2b5'
+      context.lineWidth = 1
+      tree.members.filter((member) => member.parentMemberId).forEach((member) => {
+        const parent = tree.members.find((candidate) => candidate.id === member.parentMemberId)
+        if (!parent) return
+        const bodyTop = node.y + headerHeight
+        const path = new Path2D(roundedConnectorPath(node.x + parent.x + parent.width / 2, bodyTop + parent.y + parent.height, node.x + member.x + member.width / 2, bodyTop + member.y))
+        context.stroke(path)
       })
-    })
+      tree.members.forEach((member) => drawMember(member, node.x + member.x, node.y + headerHeight + member.y, member.width))
+    } else {
+      const columns = memberColumns(node)
+      const columnGap = columns.length > 1 ? COLUMN_GAP : 0
+      columns.forEach((column, columnIndex) => {
+        const columnWidth = (node.width - columnGap * (columns.length - 1)) / columns.length
+        const left = node.x + columnIndex * (columnWidth + columnGap)
+        let top = node.y + headerHeight
+        column.members.forEach((member) => { top += drawMember(member, left, top, columnWidth) })
+      })
+    }
 
     // La bordure est tracée en dernier : les aplats des fonctions ne peuvent
     // ainsi plus recouvrir le trait inférieur ni ses angles arrondis à l’export.
@@ -409,6 +433,21 @@ function branchNodeIds(nodes: OrgNode[], rootId: string) {
     nodes.forEach((node) => {
       if (node.parentId && ids.has(node.parentId) && !ids.has(node.id)) {
         ids.add(node.id)
+        changed = true
+      }
+    })
+  }
+  return ids
+}
+
+function memberBranchIds(members: Member[], rootId: string) {
+  const ids = new Set([rootId])
+  let changed = true
+  while (changed) {
+    changed = false
+    members.forEach((member) => {
+      if (member.parentMemberId && ids.has(member.parentMemberId) && !ids.has(member.id)) {
+        ids.add(member.id)
         changed = true
       }
     })
@@ -500,8 +539,40 @@ function NodeCard({
   onRemoveCollaborator: (memberId: string, index: number) => void
 }) {
   const columns = memberColumns(node)
+  const tree = hasMemberHierarchy(node) ? memberTreeLayout(node, node.width) : null
   const iconType = departmentIconType(node.title)
   const titleRows = nodeTitleLines(node).length
+  const renderMember = (member: Member, width: number, style?: CSSProperties) => <div className="member" key={member.id} style={style}>
+    <div className="member-role-row">
+      <textarea spellCheck={false} autoCorrect="off" rows={roleLineCount(member.role, width)} aria-label={`Nom de la fonction ${member.role}`} placeholder="Nom de la fonction" value={member.role} onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }} onChange={(event) => onUpdateMember(member.id, { role: event.target.value })} />
+      <button aria-label={`Ajouter un collaborateur à ${member.role}`} title="Ajouter un collaborateur" onClick={(event) => { event.stopPropagation(); onAddCollaborator(member.id) }}><Plus size={12} /></button>
+    </div>
+    <div className="member-names">
+      {editableMemberNames(member.name).map((name, index, names) => <div className="member-name-row" key={`${member.id}-${index}`}>
+        <input
+          spellCheck={false}
+          autoCorrect="off"
+          aria-label={`Collaborateur ${index + 1} de ${member.role}`}
+          value={name}
+          onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }}
+          placeholder="Nom Prénom"
+          onChange={(event) => onUpdateCollaborator(member.id, index, event.target.value)}
+          onBlur={(event) => onUpdateCollaborator(member.id, index, formatCollaboratorName(event.target.value))}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' || index !== names.length - 1 || !name.trim() || event.currentTarget.selectionStart !== name.length) return
+            event.preventDefault()
+            const memberElement = event.currentTarget.closest('.member')
+            onAddCollaborator(member.id)
+            window.requestAnimationFrame(() => {
+              const inputs = memberElement?.querySelectorAll<HTMLInputElement>('.member-name-row input')
+              inputs?.item(inputs.length - 1).focus()
+            })
+          }}
+        />
+        <button aria-label={`Supprimer ${name || 'ce collaborateur'}`} title="Supprimer ce collaborateur" onClick={(event) => { event.stopPropagation(); onRemoveCollaborator(member.id, index) }}><X size={11} /></button>
+      </div>)}
+    </div>
+  </div>
   return (
     <article
       className={`org-card ${selected ? 'selected' : ''} ${dimmed ? 'dimmed' : ''}`}
@@ -512,7 +583,7 @@ function NodeCard({
         {iconType && <DepartmentIcon type={iconType} />}
         <textarea spellCheck={false} autoCorrect="off" rows={titleRows} aria-label={`Nom du département ${node.title}`} value={node.title} onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }} onChange={(event) => onUpdateNode({ title: event.target.value })} />
       </header>
-      <div className={`members ${columns.length > 1 ? 'two-columns' : ''}`}>
+      <div className={`members ${columns.length > 1 && !tree ? 'two-columns' : ''} ${tree ? 'function-hierarchy' : ''}`} style={tree ? { height: tree.height } : undefined}>
         {node.members.length === 0 && <button className="empty-member" onClick={(event) => {
           event.stopPropagation()
           const card = event.currentTarget.closest('.org-card')
@@ -524,40 +595,20 @@ function NodeCard({
             field?.select()
           })
         }}><Plus size={11} />Ajouter une première fonction</button>}
-        {columns.map((column, columnIndex) => {
+        {tree && <>
+          <svg className="function-connectors" width={node.width} height={tree.height} aria-hidden="true">
+            {tree.members.filter((member) => member.parentMemberId).map((member) => {
+              const parent = tree.members.find((candidate) => candidate.id === member.parentMemberId)
+              if (!parent) return null
+              return <path key={member.id} d={roundedConnectorPath(parent.x + parent.width / 2, parent.y + parent.height, member.x + member.width / 2, member.y)} />
+            })}
+          </svg>
+          {tree.members.map((member) => renderMember(member, member.width, { position: 'absolute', left: member.x, top: member.y, width: member.width, minHeight: member.height }))}
+        </>}
+        {!tree && columns.map((column, columnIndex) => {
           const columnWidth = (node.width - (columns.length - 1) * COLUMN_GAP) / columns.length
           return <div className="member-column" key={columnIndex}>
-          {column.members.map((member) => <div className="member" key={member.id}>
-            <div className="member-role-row">
-              <textarea spellCheck={false} autoCorrect="off" rows={roleLineCount(member.role, columnWidth)} aria-label={`Nom de la fonction ${member.role}`} placeholder="Nom de la fonction" value={member.role} onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }} onChange={(event) => onUpdateMember(member.id, { role: event.target.value })} />
-              <button aria-label={`Ajouter un collaborateur à ${member.role}`} title="Ajouter un collaborateur" onClick={(event) => { event.stopPropagation(); onAddCollaborator(member.id) }}><Plus size={12} /></button>
-            </div>
-            <div className="member-names">
-              {editableMemberNames(member.name).map((name, index, names) => <div className="member-name-row" key={`${member.id}-${index}`}>
-                <input
-                  spellCheck={false}
-                  autoCorrect="off"
-                  aria-label={`Collaborateur ${index + 1} de ${member.role}`}
-                  value={name}
-                  onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }}
-                  placeholder="Nom Prénom"
-                  onChange={(event) => onUpdateCollaborator(member.id, index, event.target.value)}
-                  onBlur={(event) => onUpdateCollaborator(member.id, index, formatCollaboratorName(event.target.value))}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter' || index !== names.length - 1 || !name.trim() || event.currentTarget.selectionStart !== name.length) return
-                    event.preventDefault()
-                    const memberElement = event.currentTarget.closest('.member')
-                    onAddCollaborator(member.id)
-                    window.requestAnimationFrame(() => {
-                      const inputs = memberElement?.querySelectorAll<HTMLInputElement>('.member-name-row input')
-                      inputs?.item(inputs.length - 1).focus()
-                    })
-                  }}
-                />
-                <button aria-label={`Supprimer ${name || 'ce collaborateur'}`} title="Supprimer ce collaborateur" onClick={(event) => { event.stopPropagation(); onRemoveCollaborator(member.id, index) }}><X size={11} /></button>
-              </div>)}
-            </div>
-          </div>)}
+          {column.members.map((member) => renderMember(member, columnWidth))}
         </div>})}
       </div>
     </article>
@@ -566,6 +617,12 @@ function NodeCard({
 
 function ListView({ chart, selectedIds, onSelect }: { chart: OrgChart; selectedIds: Set<string>; onSelect: (id: string, additive: boolean) => void }) {
   const children = (parentId: string | null) => chart.nodes.filter((node) => node.parentId === parentId)
+  const MemberBranch = ({ node, member, depth }: { node: OrgNode; member: Member; depth: number }) => <>
+    <div className="list-member" style={{ marginLeft: depth * 18 + 30 }}>
+      <span>{member.role}</span><strong>{memberNames(member.name).join(', ')}</strong>
+    </div>
+    {node.members.filter((candidate) => candidate.parentMemberId === member.id).map((child) => <MemberBranch key={child.id} node={node} member={child} depth={depth + 1} />)}
+  </>
   const Branch = ({ node, depth = 0 }: { node: OrgNode; depth?: number }) => (
     <div className="list-branch">
       <button className={`list-node ${selectedIds.has(node.id) ? 'selected' : ''}`} data-depth={depth} style={{ marginLeft: depth * 18, '--node-accent': node.color || chart.accent } as CSSProperties} onClick={(event) => onSelect(node.id, event.ctrlKey || event.metaKey)}>
@@ -573,11 +630,9 @@ function ListView({ chart, selectedIds, onSelect }: { chart: OrgChart; selectedI
         <span><strong>{node.title}</strong><small>{node.members.length} entrée{node.members.length > 1 ? 's' : ''}</small></span>
         <ChevronDown size={16} />
       </button>
-      {node.members.map((member) => (
-        <div className="list-member" style={{ marginLeft: depth * 18 + 30 }} key={member.id}>
-          <span>{member.role}</span><strong>{memberNames(member.name).join(', ')}</strong>
-        </div>
-      ))}
+      {hasMemberHierarchy(node)
+        ? node.members.filter((member) => !member.parentMemberId || !node.members.some((candidate) => candidate.id === member.parentMemberId)).map((member) => <MemberBranch key={member.id} node={node} member={member} depth={depth} />)
+        : node.members.map((member) => <div className="list-member" style={{ marginLeft: depth * 18 + 30 }} key={member.id}><span>{member.role}</span><strong>{memberNames(member.name).join(', ')}</strong></div>)}
       {children(node.id).map((child) => <Branch key={child.id} node={child} depth={depth + 1} />)}
     </div>
   )
@@ -887,7 +942,26 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     } : node),
   }))
   const updateMember = (id: string, patch: Partial<Member>) => updateMemberInNode(selected!.id, id, patch)
-  const removeMember = (id: string) => updateNode({ members: selected!.members.filter((member) => member.id !== id) })
+  const addRelatedMember = (source: Member, kind: 'sibling' | 'child') => {
+    if (!selected) return
+    const member: Member = {
+      id: makeId(),
+      role: '',
+      name: '',
+      parentMemberId: kind === 'child' ? source.id : source.parentMemberId ?? null,
+    }
+    updateNode({ members: [...selected.members, member] })
+    showNotice(kind === 'child' ? `Fonction ajoutée sous ${source.role || 'la fonction'}` : 'Fonction ajoutée au même niveau')
+  }
+  const removeMember = (id: string) => {
+    if (!selected) return
+    const removed = selected.members.find((member) => member.id === id)
+    updateNode({
+      members: selected.members
+        .filter((member) => member.id !== id)
+        .map((member) => member.parentMemberId === id ? { ...member, parentMemberId: removed?.parentMemberId ?? null } : member),
+    })
+  }
 
   const addCollaborator = (nodeId: string, memberId: string) => {
     const node = chart.nodes.find((item) => item.id === nodeId)
@@ -1492,7 +1566,10 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
           <section className="form-section people-section">
             <div className="section-title"><span><Users size={15} /> Fonctions</span></div>
             <p className="editor-hint">Une fonction peut regrouper plusieurs collaborateurs : saisissez un nom par ligne.</p>
-            {selected.members.map((member) => <div className="person-editor" key={member.id}>
+            {selected.members.map((member) => {
+              const invalidParents = memberBranchIds(selected.members, member.id)
+              const parentValue = member.parentMemberId === undefined ? '__list__' : member.parentMemberId ?? ''
+              return <div className="person-editor" key={member.id}>
               <div className="person-editor-actions">
                 <button disabled={selected.members.length < 2} onClick={() => moveMember(member.id, -1)} aria-label={`Monter la fonction ${member.role}`} title="Déplacer vers le haut"><ChevronUp size={13} /></button>
                 <button disabled={selected.members.length < 2} onClick={() => moveMember(member.id, 1)} aria-label={`Descendre la fonction ${member.role}`} title="Déplacer vers le bas"><ChevronDown size={13} /></button>
@@ -1500,7 +1577,19 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
               </div>
               <input spellCheck={false} autoCorrect="off" aria-label="Fonction" value={member.role} onChange={(e) => updateMember(member.id, { role: e.target.value })} />
               <textarea spellCheck={false} autoCorrect="off" aria-label="Noms, un par ligne" rows={Math.min(5, Math.max(2, memberNames(member.name).length))} value={member.name} onChange={(e) => updateMember(member.id, { name: e.target.value })} onBlur={(e) => updateMember(member.id, { name: formatCollaboratorList(e.target.value) })} placeholder="Un collaborateur par ligne" />
-            </div>)}
+              <div className="function-parent-control">
+                <span>Position hiérarchique</span>
+                <Dropdown label={`Position de ${member.role || 'la fonction'}`} value={parentValue} onChange={(value) => updateMember(member.id, { parentMemberId: value === '__list__' ? undefined : value || null })} options={[
+                  { value: '__list__', label: 'Liste simple (sans liaison)' },
+                  { value: '', label: 'Premier niveau du département' },
+                  ...selected.members.filter((candidate) => !invalidParents.has(candidate.id)).map((candidate) => ({ value: candidate.id, label: `Sous ${candidate.role || 'Fonction sans nom'}` })),
+                ]} />
+              </div>
+              <div className="function-add-actions">
+                <button onClick={() => addRelatedMember(member, 'sibling')}><Plus size={13} />Même niveau</button>
+                <button onClick={() => addRelatedMember(member, 'child')}><Plus size={13} />Fonction fille</button>
+              </div>
+            </div>})}
             {selected.members.length === 0 && <button className="empty-people" onClick={addMember}>Ajouter une première fonction</button>}
             {selected.members.length > 0 && <button className="add-person" onClick={addMember}><Plus size={15} /> Ajouter une fonction</button>}
           </section>

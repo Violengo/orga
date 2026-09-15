@@ -32,6 +32,65 @@ export const memberRoleHeight = (member: Member, width = CARD_WIDTH) => Math.max
 
 export const memberHeight = (member: Member, width = CARD_WIDTH) => memberRoleHeight(member, width) + Math.max(20, 6 + Math.max(1, memberNames(member.name).length) * 14)
 
+export const hasMemberHierarchy = (node: OrgNode) => node.members.some((member) => member.parentMemberId !== undefined)
+
+const hierarchyRoots = (node: OrgNode) => {
+  const ids = new Set(node.members.map((member) => member.id))
+  return node.members.filter((member) => !member.parentMemberId || !ids.has(member.parentMemberId))
+}
+
+const hierarchyLeafCount = (node: OrgNode, member: Member, seen = new Set<string>()): number => {
+  if (seen.has(member.id)) return 1
+  const nextSeen = new Set(seen).add(member.id)
+  const children = node.members.filter((candidate) => candidate.parentMemberId === member.id)
+  return children.length ? children.reduce((total, child) => total + hierarchyLeafCount(node, child, nextSeen), 0) : 1
+}
+
+export const hierarchyNodeWidth = (node: OrgNode) => {
+  const leaves = Math.max(1, hierarchyRoots(node).reduce((total, member) => total + hierarchyLeafCount(node, member), 0))
+  return Math.min(840, Math.max(CARD_WIDTH, leaves * 190 + Math.max(0, leaves - 1) * 12))
+}
+
+export type PositionedMember = Member & { x: number; y: number; width: number; height: number; depth: number }
+
+export const memberTreeLayout = (node: OrgNode, width = hierarchyNodeWidth(node)) => {
+  const roots = hierarchyRoots(node)
+  const leaves = Math.max(1, roots.reduce((total, member) => total + hierarchyLeafCount(node, member), 0))
+  const gap = 12
+  const unitWidth = (width - Math.max(0, leaves - 1) * gap) / leaves
+  const cardWidth = Math.min(220, Math.max(125, unitWidth))
+  const provisional: Array<PositionedMember & { centerUnit: number }> = []
+
+  const place = (member: Member, startUnit: number, depth: number, seen = new Set<string>()) => {
+    if (seen.has(member.id)) return
+    const nextSeen = new Set(seen).add(member.id)
+    const span = hierarchyLeafCount(node, member)
+    const centerUnit = startUnit + span / 2
+    provisional.push({ ...member, x: 0, y: 0, width: cardWidth, height: memberHeight(member, cardWidth), depth, centerUnit })
+    let childStart = startUnit
+    node.members.filter((candidate) => candidate.parentMemberId === member.id).forEach((child) => {
+      place(child, childStart, depth + 1, nextSeen)
+      childStart += hierarchyLeafCount(node, child)
+    })
+  }
+  let rootStart = 0
+  roots.forEach((root) => { place(root, rootStart, 0); rootStart += hierarchyLeafCount(node, root) })
+
+  const maxDepth = Math.max(0, ...provisional.map((member) => member.depth))
+  const levelTop = new Map<number, number>()
+  let top = 0
+  for (let depth = 0; depth <= maxDepth; depth += 1) {
+    levelTop.set(depth, top)
+    top += Math.max(34, ...provisional.filter((member) => member.depth === depth).map((member) => member.height)) + (depth < maxDepth ? 34 : 0)
+  }
+  const members = provisional.map(({ centerUnit, ...member }) => ({
+    ...member,
+    x: Math.max(0, Math.min(width - cardWidth, centerUnit * unitWidth + Math.max(0, centerUnit - .5) * gap - cardWidth / 2)),
+    y: levelTop.get(member.depth) ?? 0,
+  }))
+  return { members, height: top }
+}
+
 type MemberColumn = { members: OrgNode['members']; height: number }
 
 export const isWideNode = (node: OrgNode) => {
@@ -52,7 +111,7 @@ export const memberColumns = (node: OrgNode): MemberColumn[] => {
   return columns
 }
 
-export const nodeWidth = (node: OrgNode) => isWideNode(node) ? WIDE_CARD_WIDTH : CARD_WIDTH
+export const nodeWidth = (node: OrgNode) => hasMemberHierarchy(node) ? hierarchyNodeWidth(node) : isWideNode(node) ? WIDE_CARD_WIDTH : CARD_WIDTH
 
 export const departmentIconType = (title: string) => {
   const normalized = title.trim().toLocaleLowerCase('fr')
@@ -68,7 +127,7 @@ export const nodeHeaderHeight = (node: OrgNode) => {
   return departmentIconType(node.title) ? 48 + titleHeight : Math.max(38, 18 + titleHeight)
 }
 
-export const nodeHeight = (node: OrgNode) => nodeHeaderHeight(node) + Math.max(34, ...memberColumns(node).map((column) => column.height))
+export const nodeHeight = (node: OrgNode) => nodeHeaderHeight(node) + (hasMemberHierarchy(node) ? Math.max(34, memberTreeLayout(node).height) : Math.max(34, ...memberColumns(node).map((column) => column.height)))
 
 export function layoutNodes(nodes: OrgNode[]) {
   const byId = new Map(nodes.map((node) => [node.id, node]))
