@@ -449,8 +449,10 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
         if (!parent) return
         const bodyTop = node.y + headerHeight
         const path = new Path2D(roundedConnectorPath(node.x + parent.x + parent.width / 2, bodyTop + parent.y + parent.height, node.x + member.x + member.width / 2, bodyTop + member.y))
+        context.setLineDash(normalizedLabel(member.role) === 'qse local support' ? [5, 4] : [])
         context.stroke(path)
       })
+      context.setLineDash([])
       if (departmentIconType(node.title) === 'staff') {
         const centered = tree.members.filter((member) => Math.abs(member.x + member.width / 2 - node.width / 2) < 1).sort((left, right) => right.depth - left.depth)[0]
         if (centered) {
@@ -738,7 +740,7 @@ function NodeCard({
             {tree.members.filter((member) => member.parentMemberId).map((member) => {
               const parent = tree.members.find((candidate) => candidate.id === member.parentMemberId)
               if (!parent) return null
-              return <path key={member.id} d={roundedConnectorPath(parent.x + parent.width / 2, parent.y + parent.height, member.x + member.width / 2, member.y)} />
+              return <path className={normalizedLabel(member.role) === 'qse local support' ? 'dashed-function-connector' : undefined} key={member.id} d={roundedConnectorPath(parent.x + parent.width / 2, parent.y + parent.height, member.x + member.width / 2, member.y)} />
             })}
             {isStaff && (() => {
               const centered = tree.members.filter((member) => Math.abs(member.x + member.width / 2 - node.width / 2) < 1).sort((left, right) => right.depth - left.depth)[0]
