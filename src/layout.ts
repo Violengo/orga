@@ -35,7 +35,9 @@ export const memberRoleHeight = (member: Member, width = CARD_WIDTH) => Math.max
 
 export const memberHeight = (member: Member, width = CARD_WIDTH) => memberRoleHeight(member, width) + Math.max(20, 6 + Math.max(1, memberNames(member.name).length) * 14)
 
-export const hasMemberHierarchy = (node: OrgNode) => node.members.some((member) => member.parentMemberId !== undefined)
+export const departmentHead = (node: OrgNode) => node.members.find((member) => member.isDepartmentHead)
+
+export const hasMemberHierarchy = (node: OrgNode) => !departmentHead(node) && node.members.some((member) => member.parentMemberId !== undefined)
 
 const hierarchyRoots = (node: OrgNode) => {
   const ids = new Set(node.members.map((member) => member.id))
@@ -94,7 +96,7 @@ export const memberTreeLayout = (node: OrgNode, width = hierarchyNodeWidth(node)
   return { members, height: top }
 }
 
-type MemberColumn = { members: OrgNode['members']; height: number }
+type MemberColumn = { members: OrgNode['members']; height: number; fullWidth?: boolean }
 
 export const isWideNode = (node: OrgNode) => {
   const totalNames = node.members.reduce((total, member) => total + Math.max(1, memberNames(member.name).length), 0)
@@ -103,6 +105,21 @@ export const isWideNode = (node: OrgNode) => {
 }
 
 export const memberColumns = (node: OrgNode): MemberColumn[] => {
+  const head = departmentHead(node)
+  if (head) {
+    const columnWidth = (WIDE_CARD_WIDTH - COLUMN_GAP) / 2
+    const columns: MemberColumn[] = [
+      { members: [head], height: memberHeight(head, WIDE_CARD_WIDTH), fullWidth: true },
+      { members: [], height: 0 },
+      { members: [], height: 0 },
+    ]
+    node.members.filter((member) => member.id !== head.id).forEach((member) => {
+      const target = columns[1].height <= columns[2].height ? columns[1] : columns[2]
+      target.members.push(member)
+      target.height += memberHeight(member, columnWidth)
+    })
+    return columns
+  }
   if (!isWideNode(node)) return [{ members: node.members, height: node.members.reduce((total, member) => total + memberHeight(member, CARD_WIDTH), 0) }]
   const columns: MemberColumn[] = [{ members: [], height: 0 }, { members: [], height: 0 }]
   const columnWidth = (WIDE_CARD_WIDTH - COLUMN_GAP) / 2
@@ -114,7 +131,7 @@ export const memberColumns = (node: OrgNode): MemberColumn[] => {
   return columns
 }
 
-export const nodeWidth = (node: OrgNode) => hasMemberHierarchy(node) ? hierarchyNodeWidth(node) : isWideNode(node) ? WIDE_CARD_WIDTH : CARD_WIDTH
+export const nodeWidth = (node: OrgNode) => departmentHead(node) ? WIDE_CARD_WIDTH : hasMemberHierarchy(node) ? hierarchyNodeWidth(node) : isWideNode(node) ? WIDE_CARD_WIDTH : CARD_WIDTH
 
 export const departmentIconType = (title: string) => {
   const normalized = title.trim().toLocaleLowerCase('fr')
@@ -139,6 +156,21 @@ export const memberBox = (node: OrgNode, memberId: string) => {
     return member ? { x: member.x, y: headerHeight + member.y, width: member.width, height: member.height } : null
   }
   const columns = memberColumns(node)
+  if (columns[0]?.fullWidth) {
+    const head = columns[0].members[0]
+    const headHeight = memberHeight(head, width)
+    if (head.id === memberId) return { x: 0, y: headerHeight, width, height: headHeight }
+    const columnWidth = (width - COLUMN_GAP) / 2
+    for (let columnIndex = 1; columnIndex <= 2; columnIndex += 1) {
+      let top = headerHeight + headHeight
+      for (const member of columns[columnIndex].members) {
+        const height = memberHeight(member, columnWidth)
+        if (member.id === memberId) return { x: (columnIndex - 1) * (columnWidth + COLUMN_GAP), y: top, width: columnWidth, height }
+        top += height
+      }
+    }
+    return null
+  }
   const columnGap = columns.length > 1 ? COLUMN_GAP : 0
   const columnWidth = (width - columnGap * (columns.length - 1)) / columns.length
   for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
@@ -152,7 +184,13 @@ export const memberBox = (node: OrgNode, memberId: string) => {
   return null
 }
 
-export const nodeHeight = (node: OrgNode) => nodeHeaderHeight(node) + (hasMemberHierarchy(node) ? Math.max(34, memberTreeLayout(node).height) : Math.max(34, ...memberColumns(node).map((column) => column.height)))
+export const nodeHeight = (node: OrgNode) => {
+  if (departmentHead(node)) {
+    const columns = memberColumns(node)
+    return nodeHeaderHeight(node) + columns[0].height + Math.max(34, columns[1].height, columns[2].height)
+  }
+  return nodeHeaderHeight(node) + (hasMemberHierarchy(node) ? Math.max(34, memberTreeLayout(node).height) : Math.max(34, ...memberColumns(node).map((column) => column.height)))
+}
 
 export function layoutNodes(nodes: OrgNode[]) {
   const functionGroups = nodes.filter((node) => Boolean(node.connectorSide) && (node.kind !== 'function-group' || node.members.length > 0))

@@ -326,6 +326,9 @@ button { color: inherit; }
 .members { display: grid; grid-template-columns: 1fr; }
 .members.two-columns { grid-template-columns: 1fr 1fr; column-gap: 10px; }
 .members.two-columns .member-column + .member-column { border-left: 0; }
+.department-head-layout { display: block; }
+.department-head-children { display: grid; grid-template-columns: 1fr 1fr; column-gap: 10px; }
+.department-head-row .member-role-row { background: #d3d0c7; }
 .member { display: flex; flex-direction: column; align-items: stretch; text-align: center; border-bottom: 1px solid #efefec; }
 .member-column .member:last-child { border-bottom: 0; }
 .member-role-row { display: flex; min-height: 20px; align-items: center; justify-content: center; padding: 1px 3px 1px 6px; background: #dedcd4; }
@@ -402,6 +405,12 @@ button { color: inherit; }
 .person-editor-actions .remove-function:hover { color: #b93c3c; background: #fff0f0; }
 .person-editor input, .person-editor textarea { min-height: 31px !important; padding: 7px 9px !important; font-size: 11px; line-height: 1.3; }
 .person-editor > input { padding-right: 74px !important; }
+.department-head-toggle { display: flex !important; min-height: 26px; flex-direction: row !important; gap: 7px; align-items: center; color: #555b63; font-size: 11px; font-weight: 700; }
+.department-head-toggle input { width: 15px !important; min-height: 15px !important; margin: 0; padding: 0 !important; accent-color: var(--accent, #eb5d0b); }
+.bulk-function-toggle { display: flex !important; min-height: 24px; flex-direction: row !important; gap: 7px; align-items: center; color: #767b82; font-size: 10px; }
+.bulk-function-toggle input { width: 14px !important; min-height: 14px !important; margin: 0; padding: 0 !important; accent-color: var(--accent, #eb5d0b); }
+.bulk-function-parent { display: grid; gap: 7px; padding: 9px; border: 1px solid color-mix(in srgb, var(--accent, #eb5d0b) 35%, #ddd); border-radius: 8px; background: color-mix(in srgb, var(--accent, #eb5d0b) 6%, #fff); }
+.bulk-function-parent strong { color: #555b63; font-size: 11px; }
 .function-parent-control { display: grid; gap: 5px; margin-top: 3px; }
 .function-parent-control > span { color: #858a92; font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .function-parent-control .custom-dropdown-trigger { min-height: 34px; padding: 7px 10px; font-size: 11px; }

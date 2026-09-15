@@ -454,13 +454,23 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
       tree.members.forEach((member) => drawMember(member, node.x + member.x, node.y + headerHeight + member.y, member.width))
     } else {
       const columns = memberColumns(node)
-      const columnGap = columns.length > 1 ? COLUMN_GAP : 0
-      columns.forEach((column, columnIndex) => {
-        const columnWidth = (node.width - columnGap * (columns.length - 1)) / columns.length
-        const left = node.x + columnIndex * (columnWidth + columnGap)
+      if (columns[0]?.fullWidth) {
         let top = node.y + headerHeight
-        column.members.forEach((member) => { top += drawMember(member, left, top, columnWidth) })
-      })
+        columns[0].members.forEach((member) => { top += drawMember(member, node.x, top, node.width) })
+        const columnWidth = (node.width - COLUMN_GAP) / 2
+        columns.slice(1).forEach((column, columnIndex) => {
+          let columnTop = top
+          column.members.forEach((member) => { columnTop += drawMember(member, node.x + columnIndex * (columnWidth + COLUMN_GAP), columnTop, columnWidth) })
+        })
+      } else {
+        const columnGap = columns.length > 1 ? COLUMN_GAP : 0
+        columns.forEach((column, columnIndex) => {
+          const columnWidth = (node.width - columnGap * (columns.length - 1)) / columns.length
+          const left = node.x + columnIndex * (columnWidth + columnGap)
+          let top = node.y + headerHeight
+          column.members.forEach((member) => { top += drawMember(member, left, top, columnWidth) })
+        })
+      }
     }
 
     chart.nodes.filter((child) => child.parentId === node.id).forEach((child) => {
@@ -654,6 +664,7 @@ function NodeCard({
   onRequestDeleteMember: (memberId: string) => void
 }) {
   const columns = memberColumns(node)
+  const hasDepartmentHead = Boolean(columns[0]?.fullWidth)
   const tree = hasMemberHierarchy(node) ? memberTreeLayout(node, node.width) : null
   const iconType = departmentIconType(node.title)
   const isStaff = iconType === 'staff'
@@ -701,7 +712,7 @@ function NodeCard({
         {iconType && <DepartmentIcon type={iconType} />}
         <textarea spellCheck={false} autoCorrect="off" rows={titleRows} aria-label={`Nom du département ${node.title}`} value={node.title} onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }} onChange={(event) => onUpdateNode({ title: event.target.value })} />
       </header>}
-      <div className={`members ${columns.length > 1 && !tree ? 'two-columns' : ''} ${tree ? 'function-hierarchy' : ''}`} style={tree ? { height: tree.height } : undefined}>
+      <div className={`members ${columns.length > 1 && !tree && !hasDepartmentHead ? 'two-columns' : ''} ${hasDepartmentHead ? 'department-head-layout' : ''} ${tree ? 'function-hierarchy' : ''}`} style={tree ? { height: tree.height } : undefined}>
         {node.members.length === 0 && <button className="empty-member" onClick={(event) => {
           event.stopPropagation()
           const card = event.currentTarget.closest('.org-card')
@@ -723,11 +734,16 @@ function NodeCard({
           </svg>
           {tree.members.map((member) => renderMember(member, member.width, { position: 'absolute', left: member.x, top: member.y, width: member.width, minHeight: member.height }))}
         </>}
-        {!tree && columns.map((column, columnIndex) => {
+        {!tree && columns[0]?.fullWidth && <>
+          <div className="member-column department-head-row">{columns[0].members.map((member) => renderMember(member, node.width))}</div>
+          <div className="department-head-children">
+            {columns.slice(1).map((column, columnIndex) => <div className="member-column" key={columnIndex}>{column.members.map((member) => renderMember(member, (node.width - COLUMN_GAP) / 2))}</div>)}
+          </div>
+        </>}
+        {!tree && !columns[0]?.fullWidth && columns.map((column, columnIndex) => {
           const columnWidth = (node.width - (columns.length - 1) * COLUMN_GAP) / columns.length
-          return <div className="member-column" key={columnIndex}>
-          {column.members.map((member) => renderMember(member, columnWidth))}
-        </div>})}
+          return <div className="member-column" key={columnIndex}>{column.members.map((member) => renderMember(member, columnWidth))}</div>
+        })}
       </div>
       {anchoredMemberIds.map((memberId) => {
         const box = memberBox(node, memberId)
@@ -753,7 +769,12 @@ function ListView({ chart, selectedIds, onSelect }: { chart: OrgChart; selectedI
         <span><strong>{node.title}</strong><small>{node.members.length} entrée{node.members.length > 1 ? 's' : ''}</small></span>
         <ChevronDown size={16} />
       </button>
-      {hasMemberHierarchy(node)
+      {node.members.some((member) => member.isDepartmentHead)
+        ? node.members.filter((member) => member.isDepartmentHead).map((head) => {
+          const logicalNode = { ...node, members: node.members.map((member) => member.id === head.id ? member : { ...member, parentMemberId: head.id }) }
+          return <MemberBranch key={head.id} node={logicalNode} member={head} depth={depth} />
+        })
+        : hasMemberHierarchy(node)
         ? node.members.filter((member) => !member.parentMemberId || !node.members.some((candidate) => candidate.id === member.parentMemberId)).map((member) => <MemberBranch key={member.id} node={node} member={member} depth={depth} />)
         : node.members.map((member) => <div className="list-member" style={{ marginLeft: depth * 18 + 30 }} key={member.id}><span>{member.role}</span><strong>{memberNames(member.name).join(', ')}</strong></div>)}
       {children(node.id).map((child) => <Branch key={child.id} node={child} depth={depth + 1} />)}
@@ -797,6 +818,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
   const [notice, setNotice] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [selectedMember, setSelectedMember] = useState<{ nodeId: string; memberId: string } | null>(null)
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(() => new Set())
   const [pendingDeleteMember, setPendingDeleteMember] = useState<{ nodeId: string; memberId: string } | null>(null)
   const [pendingIncompleteAction, setPendingIncompleteAction] = useState<PendingIncompleteAction | null>(null)
   const [draggedId, setDraggedId] = useState<string | null>(null)
@@ -1098,6 +1120,27 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
       members: node.members.map((member) => member.id === memberId ? { ...member, ...patch } : member),
     } : node),
   }))
+  const setDepartmentHead = (nodeId: string, memberId: string, enabled: boolean) => setChart((current) => ({
+    ...current,
+    nodes: current.nodes.map((node) => node.id !== nodeId ? node : {
+      ...node,
+      members: node.members.map((member) => {
+        if (!enabled) return member.id === memberId ? { ...member, isDepartmentHead: false } : member
+        if (member.id === memberId) return { ...member, isDepartmentHead: true, parentMemberId: undefined }
+        return { ...member, isDepartmentHead: false, parentMemberId: undefined }
+      }),
+    }),
+  }))
+  const setBulkMemberParent = (nodeId: string, parentMemberId: string | null) => {
+    setChart((current) => ({
+      ...current,
+      nodes: current.nodes.map((node) => node.id !== nodeId ? node : {
+        ...node,
+        members: node.members.map((member) => selectedMemberIds.has(member.id) ? { ...member, isDepartmentHead: false, parentMemberId } : member),
+      }),
+    }))
+    setSelectedMemberIds(new Set())
+  }
   const updateMember = (id: string, patch: Partial<Member>) => updateMemberInNode(selected!.id, id, patch)
   const addRelatedMember = (source: Member, kind: 'sibling' | 'child') => {
     if (!selected) return
@@ -1892,6 +1935,13 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
           <section className="form-section people-section">
             <div className="section-title"><span><Users size={15} /> Fonctions</span></div>
             <p className="editor-hint">Une fonction peut regrouper plusieurs collaborateurs : saisissez un nom par ligne.</p>
+            {selectedMemberIds.size > 0 && <div className="bulk-function-parent">
+              <strong>{selectedMemberIds.size} fonction{selectedMemberIds.size > 1 ? 's' : ''} sélectionnée{selectedMemberIds.size > 1 ? 's' : ''}</strong>
+              <Dropdown label="Rattacher les fonctions sélectionnées" value="" onChange={(value) => setBulkMemberParent(selected.id, value || null)} options={[
+                { value: '', label: 'Choisir une fonction parente…' },
+                ...selected.members.filter((candidate) => !selectedMemberIds.has(candidate.id)).map((candidate) => ({ value: candidate.id, label: `Sous ${candidate.role || 'Fonction sans nom'}` })),
+              ]} />
+            </div>}
             {selected.members.map((member) => {
               const invalidParents = memberBranchIds(selected.members, member.id)
               const parentValue = member.parentMemberId === undefined ? '__list__' : member.parentMemberId ?? ''
@@ -1903,6 +1953,8 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
               </div>
               <input spellCheck={false} autoCorrect="off" aria-label="Fonction" value={member.role} onChange={(e) => updateMember(member.id, { role: e.target.value })} />
               <textarea spellCheck={false} autoCorrect="off" aria-label="Noms, un par ligne" rows={Math.min(5, Math.max(2, memberNames(member.name).length))} value={member.name} onChange={(e) => updateMember(member.id, { name: e.target.value })} onBlur={(e) => updateMember(member.id, { name: formatCollaboratorList(e.target.value) })} placeholder="Un collaborateur par ligne" />
+              <label className="bulk-function-toggle"><input type="checkbox" checked={selectedMemberIds.has(member.id)} onChange={(event) => setSelectedMemberIds((current) => { const next = new Set(current); if (event.target.checked) next.add(member.id); else next.delete(member.id); return next })} /> Sélectionner pour une action groupée</label>
+              {selected.kind !== 'function-group' && <label className="department-head-toggle"><input type="checkbox" checked={Boolean(member.isDepartmentHead)} onChange={(event) => setDepartmentHead(selected.id, member.id, event.target.checked)} /> Responsable du département</label>}
               <div className="function-parent-control">
                 <span>Position hiérarchique</span>
                 <Dropdown label={`Position de ${member.role || 'la fonction'}`} value={parentValue} onChange={(value) => updateMember(member.id, { parentMemberId: value === '__list__' ? undefined : value || null })} options={[

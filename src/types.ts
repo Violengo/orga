@@ -4,6 +4,8 @@ export type Member = {
   name: string
   /** undefined = disposition historique en liste ; null = racine d’une arborescence de fonctions */
   parentMemberId?: string | null
+  /** Fonction de tête : affichée sur toute la largeur et parent logique des autres fonctions. */
+  isDepartmentHead?: boolean
 }
 
 export type OrgNode = {
