@@ -349,7 +349,6 @@ export function layoutNodes(nodes: OrgNode[]) {
 
     let packTop = rowY.get(depth) ?? 112
     let firstPackMinX: number | null = null
-    let firstPackNodes: PositionedNode[] = []
     packDepartmentRows(row).forEach((pack, packIndex) => {
       const desiredLeft: number[] = []
       pack.forEach((node, index) => {
@@ -374,15 +373,13 @@ export function layoutNodes(nodes: OrgNode[]) {
       pack.forEach((node, index) => {
         const placedX = resolvedLeft[index] + packShift
         const width = nodeWidth(node)
-        const columnAnchor = firstPackNodes.reduce<PositionedNode | null>((nearest, candidate) => {
-          if (!nearest) return candidate
-          return Math.abs(candidate.x - placedX) < Math.abs(nearest.x - placedX) ? candidate : nearest
-        }, null)
-        const placedY = packIndex === 0 || !columnAnchor ? packTop : columnAnchor.y + columnAnchor.height + 36
+        const overlappingAbove = positioned.filter((candidate) => candidate.depth === depth && candidate.x < placedX + width && candidate.x + candidate.width > placedX)
+        const placedY = packIndex === 0 || !overlappingAbove.length
+          ? packTop
+          : Math.max(...overlappingAbove.map((candidate) => candidate.y + candidate.height)) + 36
         const positionedNode: PositionedNode = { ...node, x: placedX, y: placedY, width, height: nodeHeight(node), depth }
         positioned.push(positionedNode)
         positionedById.set(node.id, positionedNode)
-        if (packIndex === 0) firstPackNodes.push(positionedNode)
       })
       packTop += Math.max(60, ...pack.map(nodeHeight)) + V_GAP
     })
@@ -447,8 +444,8 @@ export function layoutNodes(nodes: OrgNode[]) {
     const extraLeft = Math.max(0, MARGIN - finalMinX)
     const extraRight = Math.max(0, finalMaxX - canvasWidth + MARGIN)
     positioned.forEach((node) => { node.x += extraLeft })
-    return { nodes: positioned, width: Math.ceil(canvasWidth + extraLeft + extraRight), height: Math.max(420, ...positioned.map((node) => node.y + node.height + MARGIN)) }
+    return { nodes: positioned, width: Math.ceil(canvasWidth + extraLeft + extraRight), height: Math.max(420, y - V_GAP + MARGIN) }
   }
 
-  return { nodes: positioned, width: canvasWidth, height: Math.max(420, ...positioned.map((node) => node.y + node.height + MARGIN)) }
+  return { nodes: positioned, width: canvasWidth, height: Math.max(420, y - V_GAP + MARGIN) }
 }
