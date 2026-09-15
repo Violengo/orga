@@ -348,8 +348,7 @@ export function layoutNodes(nodes: OrgNode[]) {
     })
 
     let packTop = rowY.get(depth) ?? 112
-    let firstPackMinX: number | null = null
-    packDepartmentRows(row).forEach((pack, packIndex) => {
+    packDepartmentRows(row).forEach((pack) => {
       const desiredLeft: number[] = []
       pack.forEach((node, index) => {
         if (depth === 0 || !node.parentId || !positionedById.has(node.parentId)) {
@@ -368,8 +367,7 @@ export function layoutNodes(nodes: OrgNode[]) {
       const resolvedLeft = resolveRowCollisions(pack, desiredLeft)
       const packMinX = Math.min(...resolvedLeft)
       const packMaxX = Math.max(...pack.map((node, index) => resolvedLeft[index] + nodeWidth(node)))
-      const packShift = packIndex === 0 || firstPackMinX === null ? -(packMinX + packMaxX) / 2 : firstPackMinX - packMinX
-      if (packIndex === 0) firstPackMinX = packMinX + packShift
+      const packShift = -(packMinX + packMaxX) / 2
       pack.forEach((node, index) => {
         const positionedNode: PositionedNode = { ...node, x: resolvedLeft[index] + packShift, y: packTop, width: nodeWidth(node), height: nodeHeight(node), depth }
         positioned.push(positionedNode)
