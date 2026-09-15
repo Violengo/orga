@@ -291,6 +291,14 @@ button { color: inherit; }
 .org-card header textarea { field-sizing: content; width: auto; min-width: 72px; max-width: calc(100% - 16px); min-height: 18px; overflow: hidden; padding: 1px 4px; color: inherit; border: 1px solid transparent; border-radius: 4px; outline: none; background: transparent; font: inherit; font-size: 11px; font-weight: 800; letter-spacing: .04em; line-height: 14px; resize: none; text-align: center; text-transform: uppercase; }
 .org-card header textarea:hover { border-color: #ffffff70; }
 .org-card header textarea:focus { border-color: #fff; background: #ffffff18; }
+.org-card.staff-card { overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.org-card.staff-card:hover { box-shadow: none; transform: none; }
+.org-card.staff-card.selected { box-shadow: none; }
+.org-card.staff-card > header { width: min(230px, 100%); box-sizing: border-box; margin-inline: auto; border-radius: 999px; box-shadow: 0 4px 14px #2f354012; }
+.org-card.staff-card.selected > header { box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-accent) 32%, transparent), 0 8px 22px #2f354018; }
+.org-card.staff-card > .members:not(.function-hierarchy) { width: min(230px, 100%); margin-inline: auto; }
+.org-card.staff-card > .members { background: transparent; }
+.org-card.staff-card > .members .member { overflow: hidden; border: 1px solid #e9e7e2; border-radius: 5px; background: #fff; }
 .members { display: grid; grid-template-columns: 1fr; }
 .members.two-columns { grid-template-columns: 1fr 1fr; column-gap: 10px; }
 .members.two-columns .member-column + .member-column { border-left: 0; }

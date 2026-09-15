@@ -275,20 +275,25 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
   layout.nodes.forEach((node) => {
     const accent = node.color || chart.accent
     const iconType = departmentIconType(node.title)
+    const isStaff = iconType === 'staff'
     const headerHeight = nodeHeaderHeight(node)
-    context.fillStyle = '#ffffff'
-    context.strokeStyle = accent
-    context.lineWidth = 1
-    context.beginPath()
-    context.roundRect(node.x, node.y, node.width, node.height, 10)
-    context.fill()
-    context.stroke()
+    const headerWidth = isStaff ? Math.min(230, node.width) : node.width
+    const headerLeft = node.x + (node.width - headerWidth) / 2
+    if (!isStaff) {
+      context.fillStyle = '#ffffff'
+      context.strokeStyle = accent
+      context.lineWidth = 1
+      context.beginPath()
+      context.roundRect(node.x, node.y, node.width, node.height, 10)
+      context.fill()
+      context.stroke()
+    }
     context.save()
     context.beginPath()
-    context.roundRect(node.x, node.y, node.width, node.height, 10)
+    context.roundRect(headerLeft, node.y, headerWidth, headerHeight, isStaff ? headerHeight / 2 : 10)
     context.clip()
     context.fillStyle = accent
-    context.fillRect(node.x, node.y, node.width, headerHeight)
+    context.fillRect(headerLeft, node.y, headerWidth, headerHeight)
     context.restore()
 
     if (iconType) {
@@ -374,11 +379,13 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
 
     // La bordure est tracée en dernier : les aplats des fonctions ne peuvent
     // ainsi plus recouvrir le trait inférieur ni ses angles arrondis à l’export.
-    context.strokeStyle = accent
-    context.lineWidth = 1
-    context.beginPath()
-    context.roundRect(node.x + .5, node.y + .5, node.width - 1, node.height - 1, 9.5)
-    context.stroke()
+    if (!isStaff) {
+      context.strokeStyle = accent
+      context.lineWidth = 1
+      context.beginPath()
+      context.roundRect(node.x + .5, node.y + .5, node.width - 1, node.height - 1, 9.5)
+      context.stroke()
+    }
   })
 
   context.textAlign = 'right'
@@ -541,6 +548,7 @@ function NodeCard({
   const columns = memberColumns(node)
   const tree = hasMemberHierarchy(node) ? memberTreeLayout(node, node.width) : null
   const iconType = departmentIconType(node.title)
+  const isStaff = iconType === 'staff'
   const titleRows = nodeTitleLines(node).length
   const renderMember = (member: Member, width: number, style?: CSSProperties) => <div className="member" key={member.id} style={style}>
     <div className="member-role-row">
@@ -575,7 +583,7 @@ function NodeCard({
   </div>
   return (
     <article
-      className={`org-card ${selected ? 'selected' : ''} ${dimmed ? 'dimmed' : ''}`}
+      className={`org-card ${isStaff ? 'staff-card' : ''} ${selected ? 'selected' : ''} ${dimmed ? 'dimmed' : ''}`}
       style={{ left: node.x, top: node.y, width: node.width, minHeight: node.height, '--node-accent': node.color || accent } as React.CSSProperties}
       onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey) }}
     >
