@@ -1405,6 +1405,16 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     return () => window.cancelAnimationFrame(frame)
   }, [selectedMember, inspectorOpen])
 
+  useEffect(() => {
+    if (!selectedId || selectedMember || selectedIds.size !== 1) return
+    const frame = window.requestAnimationFrame(() => {
+      const editor = document.querySelector<HTMLElement>('.selected-block-editor')
+      editor?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      editor?.querySelector<HTMLInputElement>('input[aria-label="Nom du département sélectionné"]')?.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [selectedId, selectedMember, selectedIds.size, inspectorOpen])
+
   const attachSelectedNodes = () => {
     if (selectedIds.size < 2) return
     const parentId = bulkParentId || null
@@ -1936,9 +1946,9 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
           <p className="editor-hint">Ctrl+clic permet d’ajouter ou retirer un bloc de cette sélection.</p>
         </section>}
         {selected && selectedIds.size === 1 && <>
-          <section className="form-section">
+          <section className={`form-section ${selectedMember ? '' : 'selected-block-editor'}`}>
             <div className="section-title"><span>Bloc sélectionné</span><button className="danger-icon" onClick={deleteNode} title="Supprimer"><Trash2 size={16} /></button></div>
-            {selected.kind !== 'function-group' && <label>Nom<input spellCheck={false} autoCorrect="off" value={selected.title} onChange={(e) => updateNode({ title: e.target.value })} /></label>}
+            {selected.kind !== 'function-group' && <label>Nom<input spellCheck={false} autoCorrect="off" aria-label="Nom du département sélectionné" value={selected.title} onChange={(e) => updateNode({ title: e.target.value })} /></label>}
             <div className="field-control"><span>Rattaché à</span><Dropdown label="Rattaché à" value={selected.parentId ?? ''} onChange={(value) => updateNode({ parentId: value || null })} options={[
               { value: '', label: 'Racine' },
               ...chart.nodes.filter((node) => node.kind !== 'function-group' && !node.connectorSide && !invalidParentIds.has(node.id)).map((node) => ({ value: node.id, label: node.title })),
