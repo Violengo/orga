@@ -26,7 +26,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { COLUMN_GAP, departmentIconType, hasMemberHierarchy, layoutNodes, memberBox, memberColumns, memberHeight, memberNames, memberRoleHeight, memberTreeLayout, nodeHeaderHeight, nodeTitleLines, roleLineCount, wrapTextLines } from './layout'
+import { COLUMN_GAP, departmentIconType, FUNCTION_GROUP_INSET, hasMemberHierarchy, layoutNodes, memberBox, memberColumns, memberHeight, memberNames, memberRoleHeight, memberTreeLayout, nodeHeaderHeight, nodeTitleLines, roleLineCount, wrapTextLines } from './layout'
 import { brandLogos, getBrandLogo } from './brandLogos'
 import { sampleChart } from './sampleData'
 import type { Member, OrgChart, OrgNode, PositionedNode } from './types'
@@ -83,7 +83,11 @@ function roundedConnectorPath(x1: number, y1: number, x2: number, y2: number, la
 function connectorLane(nodes: PositionedNode[], parent: PositionedNode, childDepth: number) {
   // Toutes les liaisons entre deux rangées circulent sous la carte la plus haute
   // de la rangée parente : une carte voisine ne peut donc jamais les masquer.
-  const parentBottom = Math.max(...nodes.filter((node) => node.depth === parent.depth).map((node) => node.y + node.height))
+  const rowBottom = Math.max(...nodes.filter((node) => node.depth === parent.depth).map((node) => node.y + node.height))
+  const attachedGroupBottom = Number.isInteger(childDepth)
+    ? Math.max(0, ...nodes.filter((node) => node.kind === 'function-group' && node.parentId === parent.id).map((node) => node.y + node.height + 20))
+    : 0
+  const parentBottom = Math.max(rowBottom, attachedGroupBottom)
   const childTop = Math.min(...nodes.filter((node) => node.depth === childDepth).map((node) => node.y))
   const parentsWithChildren = nodes
     .filter((node) => node.depth === parent.depth && nodes.some((candidate) => candidate.parentId === node.id && candidate.depth === childDepth))
@@ -381,6 +385,18 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
       titleLines.forEach((line, index) => context.fillText(line, node.x + node.width / 2, titleStartY + index * 14))
     }
 
+    if (isFunctionGroup) {
+      const tree = memberTreeLayout(node, node.width)
+      const memberIds = new Set(tree.members.map((member) => member.id))
+      const roots = tree.members.filter((member) => !member.parentMemberId || !memberIds.has(member.parentMemberId))
+      context.strokeStyle = '#aeb2b5'
+      context.lineWidth = 1.4
+      roots.forEach((member) => {
+        const path = new Path2D(roundedConnectorPath(node.x + node.width / 2, node.y, node.x + member.x + member.width / 2, node.y + FUNCTION_GROUP_INSET, node.y + FUNCTION_GROUP_INSET / 2))
+        context.stroke(path)
+      })
+    }
+
     const drawMember = (member: Member, left: number, top: number, width: number) => {
         const height = memberHeight(member, width)
         const roleHeight = memberRoleHeight(member, width)
@@ -659,6 +675,11 @@ function NodeCard({
         {iconType && <DepartmentIcon type={iconType} />}
         <textarea spellCheck={false} autoCorrect="off" rows={titleRows} aria-label={`Nom du département ${node.title}`} value={node.title} onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }} onChange={(event) => onUpdateNode({ title: event.target.value })} />
       </header>}
+      {isFunctionGroup && tree && <svg className="group-entry-connectors" width={node.width} height={FUNCTION_GROUP_INSET} aria-hidden="true">
+        {tree.members.filter((member) => !member.parentMemberId || !tree.members.some((candidate) => candidate.id === member.parentMemberId)).map((member) => (
+          <path key={member.id} d={roundedConnectorPath(node.width / 2, 0, member.x + member.width / 2, FUNCTION_GROUP_INSET, FUNCTION_GROUP_INSET / 2)} />
+        ))}
+      </svg>}
       <div className={`members ${columns.length > 1 && !tree ? 'two-columns' : ''} ${tree ? 'function-hierarchy' : ''}`} style={tree ? { height: tree.height } : undefined}>
         {node.members.length === 0 && <button className="empty-member" onClick={(event) => {
           event.stopPropagation()

@@ -3,6 +3,7 @@ import type { Member, OrgNode, PositionedNode } from './types'
 export const CARD_WIDTH = 230
 export const WIDE_CARD_WIDTH = 480
 export const COLUMN_GAP = 10
+export const FUNCTION_GROUP_INSET = 28
 const H_GAP = 36
 const V_GAP = 88
 const MARGIN = 54
@@ -123,7 +124,7 @@ export const departmentIconType = (title: string) => {
 export const nodeTitleLines = (node: OrgNode) => wrapTextLines(node.title, Math.max(18, Math.floor((nodeWidth(node) - 24) / 6.2)))
 
 export const nodeHeaderHeight = (node: OrgNode) => {
-  if (node.kind === 'function-group') return 0
+  if (node.kind === 'function-group') return FUNCTION_GROUP_INSET
   const titleHeight = nodeTitleLines(node).length * 14
   return departmentIconType(node.title) ? 48 + titleHeight : Math.max(38, 18 + titleHeight)
 }
