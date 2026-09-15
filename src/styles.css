@@ -239,6 +239,8 @@ button { color: inherit; }
 .node-nav .nav-label:focus { overflow: visible; padding: 3px 5px; background: #fff; box-shadow: 0 0 0 1px color-mix(in srgb, var(--node-accent) 45%, #d6d8dc), 0 2px 8px #252a3215; text-overflow: clip; white-space: normal; }
 .node-nav small { min-width: 22px; margin-left: auto; padding: 2px 6px; color: #8e939a; border-radius: 999px; background: #f0f1f2; font-size: 10px; text-align: center; }
 .node-nav button.active small { color: color-mix(in srgb, var(--node-accent) 78%, #4b4e53); background: #ffffffb8; }
+.convert-department { display: grid; width: 25px; height: 25px; flex: 0 0 auto; place-items: center; color: #737981; border: 1px solid #dfe1e4; border-radius: 7px; background: #fff; cursor: pointer; }
+.convert-department:hover, .convert-department:focus-visible { color: #fff; border-color: var(--node-accent); outline: none; background: var(--node-accent); }
 .drag-handle { flex: 0 0 auto; color: #b0b3b8; }
 .hierarchy-branch { display: none; flex: 0 0 auto; width: 11px; height: 15px; margin-left: -10px; border-bottom: 1.5px solid #c9ccd0; border-radius: 0 0 0 5px; transform: translateY(-4px); }
 .node-nav button:not([data-depth="0"]) .hierarchy-branch { display: block; }

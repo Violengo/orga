@@ -207,6 +207,7 @@ export function normalizeChart(value: unknown): OrgChart | null {
       const memberIds = new Set(node.members.map((member) => member.id))
       return {
         ...node,
+        title: node.kind === 'function-group' && node.title.trim().toLocaleLowerCase('fr') === 'branche de fonctions' ? 'AUX' : node.title,
         members: node.members.map((member) => ({
           ...member,
           ...(member.parentMemberId !== undefined ? { parentMemberId: member.parentMemberId && memberIds.has(member.parentMemberId) ? member.parentMemberId : null } : {}),
@@ -997,7 +998,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
   const addFunctionGroupOnConnector = (parentId: string, side: 'left' | 'right') => {
     const node: OrgNode = {
       id: makeId(),
-      title: 'Branche de fonctions',
+      title: 'AUX',
       parentId,
       kind: 'function-group',
       connectorSide: side,
@@ -1008,6 +1009,22 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     setSelectedIds(new Set([node.id]))
     setInspectorOpen(true)
     showNotice(`Branche ajoutée à ${side === 'left' ? 'gauche' : 'droite'}`)
+  }
+  const convertFunctionGroupToDepartment = (nodeId: string) => {
+    updateNodeById(nodeId, { kind: 'department', connectorSide: undefined, title: 'Nouveau département' })
+    setSelectedId(nodeId)
+    setSelectedIds(new Set([nodeId]))
+    showNotice('AUX converti en département')
+    window.requestAnimationFrame(() => {
+      const label = document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"] .nav-label`)
+      label?.focus()
+      const selection = window.getSelection()
+      if (!label || !selection) return
+      const range = document.createRange()
+      range.selectNodeContents(label)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    })
   }
   const cloneNode = (node: OrgNode, parentId = node.parentId): OrgNode => ({
     ...node,
@@ -1484,6 +1501,21 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
           }}
         >{node.title}</span>
         <small>{node.members.length}</small>
+        {node.kind === 'function-group' && <span
+          className="convert-department"
+          role="button"
+          tabIndex={0}
+          title="Convertir AUX en département"
+          aria-label="Convertir AUX en département"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => { event.stopPropagation(); convertFunctionGroupToDepartment(node.id) }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            event.stopPropagation()
+            convertFunctionGroupToDepartment(node.id)
+          }}
+        ><Building2 size={13} /></span>}
       </button>
       {children.length > 0 && <div className="structure-children">{children.map((child) => renderStructureBranch(child, depth + 1, nextAncestry))}</div>}
     </div>
