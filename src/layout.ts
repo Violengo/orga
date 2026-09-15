@@ -52,6 +52,7 @@ const hierarchyLeafCount = (node: OrgNode, member: Member, seen = new Set<string
 }
 
 export const hierarchyNodeWidth = (node: OrgNode) => {
+  if (departmentIconType(node.title) === 'staff') return 700
   const leaves = Math.max(1, hierarchyRoots(node).reduce((total, member) => total + hierarchyLeafCount(node, member), 0))
   return Math.min(840, Math.max(CARD_WIDTH, leaves * 190 + Math.max(0, leaves - 1) * 12))
 }
@@ -60,6 +61,44 @@ export type PositionedMember = Member & { x: number; y: number; width: number; h
 
 export const memberTreeLayout = (node: OrgNode, width = hierarchyNodeWidth(node)) => {
   const roots = hierarchyRoots(node)
+  if (departmentIconType(node.title) === 'staff' && roots.length) {
+    const cardWidth = CARD_WIDTH
+    const horizontalGap = 32
+    const centerX = width / 2
+    const provisional: PositionedMember[] = []
+    const primaryRoot = roots[0]
+    const seen = new Set<string>()
+
+    const placePrimaryBranch = (member: Member, depth: number) => {
+      if (seen.has(member.id)) return
+      seen.add(member.id)
+      const left = depth <= 1
+        ? centerX - cardWidth / 2
+        : centerX - cardWidth - 14
+      provisional.push({ ...member, x: left, y: 0, width: cardWidth, height: memberHeight(member, cardWidth), depth })
+      node.members.filter((candidate) => candidate.parentMemberId === member.id).forEach((child) => placePrimaryBranch(child, depth + 1))
+    }
+    placePrimaryBranch(primaryRoot, 0)
+    roots.slice(1).forEach((root, index) => {
+      provisional.push({
+        ...root,
+        x: centerX + cardWidth / 2 + horizontalGap + index * (cardWidth + horizontalGap),
+        y: 0,
+        width: cardWidth,
+        height: memberHeight(root, cardWidth),
+        depth: 0,
+      })
+    })
+
+    const maxDepth = Math.max(0, ...provisional.map((member) => member.depth))
+    const levelTop = new Map<number, number>()
+    let top = 0
+    for (let depth = 0; depth <= maxDepth; depth += 1) {
+      levelTop.set(depth, top)
+      top += Math.max(34, ...provisional.filter((member) => member.depth === depth).map((member) => member.height)) + (depth < maxDepth ? MEMBER_LEVEL_GAP : 0)
+    }
+    return { members: provisional.map((member) => ({ ...member, y: levelTop.get(member.depth) ?? 0 })), height: top }
+  }
   const leaves = Math.max(1, roots.reduce((total, member) => total + hierarchyLeafCount(node, member), 0))
   const gap = 12
   const unitWidth = (width - Math.max(0, leaves - 1) * gap) / leaves
