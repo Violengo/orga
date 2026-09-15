@@ -80,12 +80,6 @@ function roundedConnectorPath(x1: number, y1: number, x2: number, y2: number, la
   return `M ${x1} ${y1} V ${mid - radius} Q ${x1} ${mid} ${x1 + direction * radius} ${mid} H ${x2 - direction * radius} Q ${x2} ${mid} ${x2} ${mid + radius} V ${y2}`
 }
 
-function lateralConnectorPath(x1: number, y1: number, x2: number, y2: number) {
-  const direction = Math.sign(x2 - x1) || 1
-  const radius = Math.min(14, Math.abs(x2 - x1) / 2, Math.abs(y2 - y1) / 2)
-  return `M ${x1} ${y1} V ${y2 - radius} Q ${x1} ${y2} ${x1 + direction * radius} ${y2} H ${x2}`
-}
-
 function functionGroupRootAnchors(node: PositionedNode) {
   if (node.kind !== 'function-group') return []
   const tree = memberTreeLayout(node, node.width)
@@ -96,6 +90,26 @@ function functionGroupRootAnchors(node: PositionedNode) {
       x: node.connectorSide === 'left' ? node.x + member.x + member.width : node.x + member.x,
       y: node.y + member.y + memberRoleHeight(member, member.width) / 2,
     }))
+}
+
+function consolidatedFunctionGroupPaths(nodes: PositionedNode[]) {
+  const positioned = new Map(nodes.map((node) => [node.id, node]))
+  const byParent = new Map<string, Array<{ x: number; y: number }>>()
+  nodes.filter((node) => node.kind === 'function-group' && node.parentId).forEach((node) => {
+    byParent.set(node.parentId!, [...(byParent.get(node.parentId!) ?? []), ...functionGroupRootAnchors(node)])
+  })
+  return [...byParent.entries()].flatMap(([parentId, rawAnchors]) => {
+    const parent = positioned.get(parentId)
+    if (!parent || rawAnchors.length === 0) return []
+    const x = parent.x + parent.width / 2
+    const y = parent.y + parent.height
+    const anchors = rawAnchors.filter((anchor, index) => rawAnchors.findIndex((candidate) => Math.abs(candidate.x - anchor.x) < .5 && Math.abs(candidate.y - anchor.y) < .5) === index)
+    const maxY = Math.max(...anchors.map((anchor) => anchor.y))
+    const branches = anchors.map((anchor) => `M ${x} ${anchor.y} H ${anchor.x}`).join(' ')
+    const hasRegularContinuation = nodes.some((node) => node.parentId === parentId && node.kind !== 'function-group' && Math.abs(connectorSource(parent, node).x - x) < .5)
+    const trunk = hasRegularContinuation ? '' : `M ${x} ${y} V ${maxY}`
+    return [{ parentId, d: `${trunk} ${branches}`.trim() }]
+  })
 }
 
 function connectorLane(nodes: PositionedNode[], parent: PositionedNode, childDepth: number) {
@@ -308,18 +322,12 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
   const positioned = new Map(layout.nodes.map((node) => [node.id, node]))
   context.strokeStyle = '#aeb2b5'
   context.lineWidth = 1.4
-  layout.nodes.forEach((node) => {
+  layout.nodes.filter((node) => node.kind !== 'function-group').forEach((node) => {
     if (!node.parentId) return
     const parent = positioned.get(node.parentId)
     if (!parent) return
     const x1 = connectorSource(parent, node).x
     const y1 = parent.y + parent.height
-    if (node.kind === 'function-group') {
-      functionGroupRootAnchors(node).forEach((anchor) => {
-        context.stroke(new Path2D(lateralConnectorPath(x1, y1, anchor.x, anchor.y)))
-      })
-      return
-    }
     const x2 = connectorTargetX(parent, node)
     const y2 = node.y
     const mid = connectorLane(layout.nodes, parent, node.depth)
@@ -339,6 +347,7 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
     context.lineTo(x2, y2)
     context.stroke()
   })
+  consolidatedFunctionGroupPaths(layout.nodes).forEach(({ d }) => context.stroke(new Path2D(d)))
 
   layout.nodes.forEach((node) => {
     const accent = node.color || chart.accent
@@ -1691,17 +1700,15 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
                   <div><strong>{chart.title}</strong><span>{chart.subtitle}</span></div>
                 </div>
                 <svg className="connectors" width={layout.width} height={layout.height} aria-hidden="true">
-                  {layout.nodes.filter((node) => node.parentId && positions.has(node.parentId)).map((node) => {
+                  {layout.nodes.filter((node) => node.kind !== 'function-group' && node.parentId && positions.has(node.parentId)).map((node) => {
                     const parent = positions.get(node.parentId!)!
                     const x1 = connectorSource(parent, node).x
                     const y1 = parent.y + parent.height
-                    if (node.kind === 'function-group') {
-                      return <g key={node.id}>{functionGroupRootAnchors(node).map((anchor, index) => <path key={index} d={lateralConnectorPath(x1, y1, anchor.x, anchor.y)} />)}</g>
-                    }
                     const x2 = connectorTargetX(parent, node)
                     const y2 = node.y
                     return <path key={node.id} d={roundedConnectorPath(x1, y1, x2, y2, connectorLane(layout.nodes, parent, node.depth))} />
                   })}
+                  {consolidatedFunctionGroupPaths(layout.nodes).map(({ parentId, d }) => <path key={`aux-${parentId}`} d={d} />)}
                 </svg>
                 {layout.nodes.filter((parent) => parent.kind !== 'function-group' && layout.nodes.some((child) => child.parentId === parent.id && child.kind !== 'function-group')).map((parent) => {
                   const children = layout.nodes.filter((child) => child.parentId === parent.id && child.kind !== 'function-group')
