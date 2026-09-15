@@ -152,7 +152,7 @@ export const memberBox = (node: OrgNode, memberId: string) => {
 export const nodeHeight = (node: OrgNode) => nodeHeaderHeight(node) + (hasMemberHierarchy(node) ? Math.max(34, memberTreeLayout(node).height) : Math.max(34, ...memberColumns(node).map((column) => column.height)))
 
 export function layoutNodes(nodes: OrgNode[]) {
-  const functionGroups = nodes.filter((node) => node.kind === 'function-group')
+  const functionGroups = nodes.filter((node) => node.kind === 'function-group' && node.members.length > 0)
   const layoutSource = nodes.filter((node) => node.kind !== 'function-group')
   const byId = new Map(layoutSource.map((node) => [node.id, node]))
   const depths = new Map<string, number>()

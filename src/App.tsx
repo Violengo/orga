@@ -591,6 +591,9 @@ function NodeCard({
   onUpdateCollaborator,
   onRemoveCollaborator,
   anchoredMemberIds,
+  selectedMemberId,
+  onSelectMember,
+  onRequestDeleteMember,
 }: {
   node: PositionedNode
   accent: string
@@ -604,6 +607,9 @@ function NodeCard({
   onUpdateCollaborator: (memberId: string, index: number, value: string) => void
   onRemoveCollaborator: (memberId: string, index: number) => void
   anchoredMemberIds: string[]
+  selectedMemberId: string | null
+  onSelectMember: (memberId: string) => void
+  onRequestDeleteMember: (memberId: string) => void
 }) {
   const columns = memberColumns(node)
   const tree = hasMemberHierarchy(node) ? memberTreeLayout(node, node.width) : null
@@ -611,10 +617,11 @@ function NodeCard({
   const isStaff = iconType === 'staff'
   const isFunctionGroup = node.kind === 'function-group'
   const titleRows = nodeTitleLines(node).length
-  const renderMember = (member: Member, width: number, style?: CSSProperties) => <div className="member" key={member.id} style={style}>
+  const renderMember = (member: Member, width: number, style?: CSSProperties) => <div className={`member ${selectedMemberId === member.id ? 'selected-function' : ''}`} key={member.id} style={style} onClick={(event) => { event.stopPropagation(); onSelectMember(member.id) }}>
     <div className="member-role-row">
-      <textarea spellCheck={false} autoCorrect="off" rows={roleLineCount(member.role, width)} aria-label={`Nom de la fonction ${member.role}`} placeholder="Nom de la fonction" value={member.role} onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }} onChange={(event) => onUpdateMember(member.id, { role: event.target.value })} />
+      <textarea spellCheck={false} autoCorrect="off" rows={roleLineCount(member.role, width)} aria-label={`Nom de la fonction ${member.role}`} placeholder="Nom de la fonction" value={member.role} onClick={(event) => { event.stopPropagation(); onSelectMember(member.id) }} onChange={(event) => onUpdateMember(member.id, { role: event.target.value })} />
       <button aria-label={`Ajouter un collaborateur à ${member.role}`} title="Ajouter un collaborateur" onClick={(event) => { event.stopPropagation(); onAddCollaborator(member.id) }}><Plus size={12} /></button>
+      {selectedMemberId === member.id && <button className="member-delete" aria-label={`Supprimer la fonction ${member.role}`} title="Supprimer cette fonction" onClick={(event) => { event.stopPropagation(); onRequestDeleteMember(member.id) }}><Trash2 size={11} /></button>}
     </div>
     <div className="member-names">
       {editableMemberNames(member.name).map((name, index, names) => <div className="member-name-row" key={`${member.id}-${index}`}>
@@ -623,7 +630,7 @@ function NodeCard({
           autoCorrect="off"
           aria-label={`Collaborateur ${index + 1} de ${member.role}`}
           value={name}
-          onClick={(event) => { event.stopPropagation(); onSelect(event.ctrlKey || event.metaKey, false) }}
+          onClick={(event) => { event.stopPropagation(); onSelectMember(member.id) }}
           placeholder="Nom Prénom"
           onChange={(event) => onUpdateCollaborator(member.id, index, event.target.value)}
           onBlur={(event) => onUpdateCollaborator(member.id, index, formatCollaboratorName(event.target.value))}
@@ -747,6 +754,8 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [selectedMember, setSelectedMember] = useState<{ nodeId: string; memberId: string } | null>(null)
+  const [pendingDeleteMember, setPendingDeleteMember] = useState<{ nodeId: string; memberId: string } | null>(null)
   const [pendingIncompleteAction, setPendingIncompleteAction] = useState<PendingIncompleteAction | null>(null)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dropIntent, setDropIntent] = useState<{ targetId: string; mode: DropMode } | null>(null)
@@ -1042,14 +1051,22 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     updateNode({ members: [...selected.members, member] })
     showNotice(kind === 'child' ? `Fonction ajoutée sous ${source.role || 'la fonction'}` : 'Fonction ajoutée au même niveau')
   }
-  const removeMember = (id: string) => {
-    if (!selected) return
-    const removed = selected.members.find((member) => member.id === id)
-    updateNode({
-      members: selected.members
-        .filter((member) => member.id !== id)
-        .map((member) => member.parentMemberId === id ? { ...member, parentMemberId: removed?.parentMemberId ?? null } : member),
-    })
+  const removeMember = (nodeId: string, id: string) => {
+    const node = chart.nodes.find((candidate) => candidate.id === nodeId)
+    if (!node) return
+    const deletedMemberIds = memberBranchIds(node.members, id)
+    const remainingMembers = node.members.filter((member) => !deletedMemberIds.has(member.id))
+    if (node.kind === 'function-group' && remainingMembers.length === 0) {
+      setChart((current) => ({ ...current, nodes: current.nodes.filter((candidate) => candidate.id !== nodeId) }))
+      const parentId = node.parentId ?? ''
+      setSelectedId(parentId)
+      setSelectedIds(new Set(parentId ? [parentId] : []))
+    } else {
+      updateNodeById(nodeId, { members: remainingMembers })
+    }
+    setSelectedMember(null)
+    setPendingDeleteMember(null)
+    showNotice(`${deletedMemberIds.size} fonction${deletedMemberIds.size > 1 ? 's' : ''} supprimée${deletedMemberIds.size > 1 ? 's' : ''}`)
   }
 
   const addCollaborator = (nodeId: string, memberId: string) => {
@@ -1222,12 +1239,14 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     setSelectedIds(next)
     setBulkParentId('')
     setSelectedId(primaryId)
+    setSelectedMember(null)
     if (!additive && revealInspector && window.matchMedia('(max-width: 1050px)').matches) setInspectorOpen(true)
   }
   const clearSelection = () => {
     if (suppressCanvasClickRef.current) return
     setSelectedId('')
     setSelectedIds(new Set())
+    setSelectedMember(null)
     setBulkParentId('')
     setInspectorOpen(false)
   }
@@ -1310,6 +1329,11 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     const onShortcut = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       const isEditing = Boolean(target?.closest('input, textarea, select, [contenteditable="true"]'))
+      if (event.key === 'Delete' && !isEditing && selectedMember) {
+        event.preventDefault()
+        setPendingDeleteMember(selectedMember)
+        return
+      }
       if (event.key === 'Delete' && !isEditing && selectedIds.size === 1) {
         event.preventDefault()
         deleteNode()
@@ -1335,6 +1359,9 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
   })
 
   const pendingDeleteNode = chart.nodes.find((node) => node.id === pendingDeleteId)
+  const pendingFunctionNode = pendingDeleteMember ? chart.nodes.find((node) => node.id === pendingDeleteMember.nodeId) : undefined
+  const pendingFunction = pendingFunctionNode?.members.find((member) => member.id === pendingDeleteMember?.memberId)
+  const pendingFunctionBranchSize = pendingFunctionNode && pendingFunction ? memberBranchIds(pendingFunctionNode.members, pendingFunction.id).size : 0
   const emptyFieldCount = countEmptyFields(chart)
   const pendingDeleteDescendants = pendingDeleteId ? (() => {
     const ids = new Set([pendingDeleteId])
@@ -1504,6 +1531,21 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
         </section>
       </div>}
 
+      {pendingFunctionNode && pendingFunction && <div className="confirm-backdrop" onClick={() => setPendingDeleteMember(null)}>
+        <section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-function-title" aria-describedby="delete-function-description" onClick={(event) => event.stopPropagation()}>
+          <div className="confirm-icon"><Trash2 size={22} /></div>
+          <div>
+            <span className="confirm-eyebrow">Suppression définitive</span>
+            <h2 id="delete-function-title">Supprimer la fonction « {pendingFunction.role || 'Sans nom'} » ?</h2>
+            <p id="delete-function-description">La fonction, ses collaborateurs{pendingFunctionBranchSize > 1 ? <> et ses <strong>{pendingFunctionBranchSize - 1} fonction{pendingFunctionBranchSize > 2 ? 's' : ''} fille{pendingFunctionBranchSize > 2 ? 's' : ''}</strong></> : null} seront supprimés. Cette action est irréversible.</p>
+          </div>
+          <footer>
+            <button className="button" onClick={() => setPendingDeleteMember(null)}>Annuler</button>
+            <button className="button danger" onClick={() => removeMember(pendingFunctionNode.id, pendingFunction.id)}><Trash2 size={16} />Supprimer la fonction</button>
+          </footer>
+        </section>
+      </div>}
+
       {exportPreview && <div className="export-preview-backdrop" onClick={() => setExportPreview(null)}>
         <section className="export-preview-dialog" role="dialog" aria-modal="true" aria-label={`Aperçu ${exportPreview.format.toUpperCase()}`} onClick={(event) => event.stopPropagation()}>
           <header>
@@ -1623,6 +1665,12 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
                   onAddCollaborator={(memberId) => addCollaborator(node.id, memberId)}
                   onUpdateCollaborator={(memberId, index, value) => updateCollaborator(node.id, memberId, index, value)}
                   onRemoveCollaborator={(memberId, index) => removeCollaborator(node.id, memberId, index)}
+                  selectedMemberId={selectedMember?.nodeId === node.id ? selectedMember.memberId : null}
+                  onSelectMember={(memberId) => {
+                    selectNode(node.id, false, false)
+                    setSelectedMember({ nodeId: node.id, memberId })
+                  }}
+                  onRequestDeleteMember={(memberId) => setPendingDeleteMember({ nodeId: node.id, memberId })}
                   anchoredMemberIds={chart.nodes
                     .filter((child) => child.parentId === node.id)
                     .map((child) => operatorsAnchorMember(node, child)?.id)
@@ -1687,7 +1735,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
               <div className="person-editor-actions">
                 <button disabled={selected.members.length < 2} onClick={() => moveMember(member.id, -1)} aria-label={`Monter la fonction ${member.role}`} title="Déplacer vers le haut"><ChevronUp size={13} /></button>
                 <button disabled={selected.members.length < 2} onClick={() => moveMember(member.id, 1)} aria-label={`Descendre la fonction ${member.role}`} title="Déplacer vers le bas"><ChevronDown size={13} /></button>
-                <button className="remove-function" onClick={() => removeMember(member.id)} aria-label={`Supprimer la fonction ${member.role}`} title="Supprimer la fonction"><X size={13} /></button>
+                <button className="remove-function" onClick={() => setPendingDeleteMember({ nodeId: selected.id, memberId: member.id })} aria-label={`Supprimer la fonction ${member.role}`} title="Supprimer la fonction"><X size={13} /></button>
               </div>
               <input spellCheck={false} autoCorrect="off" aria-label="Fonction" value={member.role} onChange={(e) => updateMember(member.id, { role: e.target.value })} />
               <textarea spellCheck={false} autoCorrect="off" aria-label="Noms, un par ligne" rows={Math.min(5, Math.max(2, memberNames(member.name).length))} value={member.name} onChange={(e) => updateMember(member.id, { name: e.target.value })} onBlur={(e) => updateMember(member.id, { name: formatCollaboratorList(e.target.value) })} placeholder="Un collaborateur par ligne" />

@@ -325,6 +325,9 @@ button { color: inherit; }
 .member-role-row textarea:hover, .member-role-row textarea:focus { border-color: #aaa79e; background: #fff; }
 .member-role-row button { display: grid; width: 17px; height: 17px; flex: 0 0 auto; padding: 0; place-items: center; color: #777b81; border: 0; border-radius: 3px; background: transparent; cursor: pointer; }
 .member-role-row button:hover { color: #fff; background: var(--node-accent); }
+.member.selected-function { position: relative; z-index: 4; box-shadow: inset 0 0 0 1.5px var(--node-accent), 0 3px 10px #252b3517; }
+.member-role-row button.member-delete { color: #b94242; }
+.member-role-row button.member-delete:hover { color: #fff; background: #bd3030; }
 .member-names { display: flex; min-height: 20px; flex-direction: column; justify-content: center; padding: 3px 5px 5px; background: #fff; }
 .member-name-row { display: flex; min-height: 14px; align-items: center; justify-content: center; }
 .member-name-row input { field-sizing: content; width: auto; min-width: 62px; max-width: calc(100% - 16px); height: 14px; padding: 0 2px; color: #666c74; border: 1px solid transparent; border-radius: 3px; outline: none; background: transparent; font-size: 9px; line-height: 12px; text-align: center; }
