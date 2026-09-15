@@ -8,6 +8,7 @@ const H_GAP = 36
 const V_GAP = 88
 const MARGIN = 54
 const FUNCTION_GROUP_STEM_GAP = 18
+const MEMBER_LEVEL_GAP = 18
 // Zone occupée en haut par le logo (et, symétriquement, par le cartouche titre).
 // Les racines doivent commencer après cette zone tant qu'elles sont sur la même hauteur.
 const HEADER_SAFE_EDGE = 350
@@ -83,7 +84,7 @@ export const memberTreeLayout = (node: OrgNode, width = hierarchyNodeWidth(node)
   let top = 0
   for (let depth = 0; depth <= maxDepth; depth += 1) {
     levelTop.set(depth, top)
-    top += Math.max(34, ...provisional.filter((member) => member.depth === depth).map((member) => member.height)) + (depth < maxDepth ? 34 : 0)
+    top += Math.max(34, ...provisional.filter((member) => member.depth === depth).map((member) => member.height)) + (depth < maxDepth ? MEMBER_LEVEL_GAP : 0)
   }
   const members = provisional.map(({ centerUnit, ...member }) => ({
     ...member,
@@ -154,8 +155,8 @@ export const memberBox = (node: OrgNode, memberId: string) => {
 export const nodeHeight = (node: OrgNode) => nodeHeaderHeight(node) + (hasMemberHierarchy(node) ? Math.max(34, memberTreeLayout(node).height) : Math.max(34, ...memberColumns(node).map((column) => column.height)))
 
 export function layoutNodes(nodes: OrgNode[]) {
-  const functionGroups = nodes.filter((node) => node.kind === 'function-group' && node.members.length > 0)
-  const layoutSource = nodes.filter((node) => node.kind !== 'function-group')
+  const functionGroups = nodes.filter((node) => Boolean(node.connectorSide) && (node.kind !== 'function-group' || node.members.length > 0))
+  const layoutSource = nodes.filter((node) => !node.connectorSide)
   const byId = new Map(layoutSource.map((node) => [node.id, node]))
   const depths = new Map<string, number>()
 
@@ -331,7 +332,7 @@ export function layoutNodes(nodes: OrgNode[]) {
   // Si plusieurs axes voisins reçoivent des groupes au même étage, on ne les
   // écarte que lorsqu'ils se touchent réellement.
   const groupRows = new Map<number, PositionedNode[]>()
-  positioned.filter((node) => node.kind === 'function-group').forEach((node) => {
+  positioned.filter((node) => node.connectorSide).forEach((node) => {
     groupRows.set(node.y, [...(groupRows.get(node.y) ?? []), node])
   })
   groupRows.forEach((row) => {

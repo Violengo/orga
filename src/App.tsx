@@ -81,7 +81,11 @@ function roundedConnectorPath(x1: number, y1: number, x2: number, y2: number, la
 }
 
 function functionGroupRootAnchors(node: PositionedNode) {
-  if (node.kind !== 'function-group') return []
+  if (!node.connectorSide) return []
+  if (node.kind !== 'function-group') return [{
+    x: node.connectorSide === 'left' ? node.x + node.width : node.x,
+    y: node.y + nodeHeaderHeight(node) / 2,
+  }]
   const tree = memberTreeLayout(node, node.width)
   const ids = new Set(tree.members.map((member) => member.id))
   return tree.members
@@ -95,7 +99,7 @@ function functionGroupRootAnchors(node: PositionedNode) {
 function consolidatedFunctionGroupPaths(nodes: PositionedNode[]) {
   const positioned = new Map(nodes.map((node) => [node.id, node]))
   const byParent = new Map<string, Array<{ x: number; y: number }>>()
-  nodes.filter((node) => node.kind === 'function-group' && node.parentId).forEach((node) => {
+  nodes.filter((node) => node.connectorSide && node.parentId).forEach((node) => {
     byParent.set(node.parentId!, [...(byParent.get(node.parentId!) ?? []), ...functionGroupRootAnchors(node)])
   })
   return [...byParent.entries()].flatMap(([parentId, rawAnchors]) => {
@@ -106,7 +110,7 @@ function consolidatedFunctionGroupPaths(nodes: PositionedNode[]) {
     const anchors = rawAnchors.filter((anchor, index) => rawAnchors.findIndex((candidate) => Math.abs(candidate.x - anchor.x) < .5 && Math.abs(candidate.y - anchor.y) < .5) === index)
     const maxY = Math.max(...anchors.map((anchor) => anchor.y))
     const branches = anchors.map((anchor) => `M ${x} ${anchor.y} H ${anchor.x}`).join(' ')
-    const hasRegularContinuation = nodes.some((node) => node.parentId === parentId && node.kind !== 'function-group' && Math.abs(connectorSource(parent, node).x - x) < .5)
+    const hasRegularContinuation = nodes.some((node) => node.parentId === parentId && !node.connectorSide && Math.abs(connectorSource(parent, node).x - x) < .5)
     const trunk = hasRegularContinuation ? '' : `M ${x} ${y} V ${maxY}`
     return [{ parentId, d: `${trunk} ${branches}`.trim() }]
   })
@@ -117,7 +121,7 @@ function connectorLane(nodes: PositionedNode[], parent: PositionedNode, childDep
   // de la rangée parente : une carte voisine ne peut donc jamais les masquer.
   const rowBottom = Math.max(...nodes.filter((node) => node.depth === parent.depth).map((node) => node.y + node.height))
   const attachedGroupBottom = Number.isInteger(childDepth)
-    ? Math.max(0, ...nodes.filter((node) => node.kind === 'function-group' && node.parentId === parent.id).map((node) => node.y + node.height + 20))
+    ? Math.max(0, ...nodes.filter((node) => node.connectorSide && node.parentId === parent.id).map((node) => node.y + node.height + 20))
     : 0
   const parentBottom = Math.max(rowBottom, attachedGroupBottom)
   const childTop = Math.min(...nodes.filter((node) => node.depth === childDepth).map((node) => node.y))
@@ -322,7 +326,7 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
   const positioned = new Map(layout.nodes.map((node) => [node.id, node]))
   context.strokeStyle = '#aeb2b5'
   context.lineWidth = 1.4
-  layout.nodes.filter((node) => node.kind !== 'function-group').forEach((node) => {
+  layout.nodes.filter((node) => !node.connectorSide).forEach((node) => {
     if (!node.parentId) return
     const parent = positioned.get(node.parentId)
     if (!parent) return
@@ -1020,7 +1024,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     showNotice(`Branche ajoutée à ${side === 'left' ? 'gauche' : 'droite'}`)
   }
   const convertFunctionGroupToDepartment = (nodeId: string) => {
-    updateNodeById(nodeId, { kind: 'department', connectorSide: undefined, title: 'Nouveau département' })
+    updateNodeById(nodeId, { kind: 'department', title: 'Nouveau département' })
     setSelectedId(nodeId)
     setSelectedIds(new Set([nodeId]))
     showNotice('AUX converti en département')
@@ -1178,7 +1182,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
       }
     }
 
-    const movedNode = duplicate ? cloneNode(source, nextParentId) : { ...source, parentId: nextParentId }
+    const movedNode = duplicate ? cloneNode(source, nextParentId) : { ...source, parentId: nextParentId, ...(source.kind === 'department' ? { connectorSide: undefined } : {}) }
     setChart((current) => {
       const reordered = duplicate ? [...current.nodes] : current.nodes.filter((node) => node.id !== sourceId)
       const targetIndex = reordered.findIndex((node) => node.id === targetId)
@@ -1466,7 +1470,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
           const targetElement = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-node-id]')
           const targetId = targetElement?.dataset.nodeId
           const targetNode = chart.nodes.find((candidate) => candidate.id === targetId)
-          if (!targetElement || !targetId || targetId === node.id || targetNode?.kind === 'function-group') {
+          if (!targetElement || !targetId || targetId === node.id || targetNode?.kind === 'function-group' || targetNode?.connectorSide) {
             dropIntentRef.current = null
             setDropIntent(null)
             return
@@ -1710,7 +1714,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
                   <div><strong>{chart.title}</strong><span>{chart.subtitle}</span></div>
                 </div>
                 <svg className="connectors" width={layout.width} height={layout.height} aria-hidden="true">
-                  {layout.nodes.filter((node) => node.kind !== 'function-group' && node.parentId && positions.has(node.parentId)).map((node) => {
+                  {layout.nodes.filter((node) => !node.connectorSide && node.parentId && positions.has(node.parentId)).map((node) => {
                     const parent = positions.get(node.parentId!)!
                     const x1 = connectorSource(parent, node).x
                     const y1 = parent.y + parent.height
@@ -1720,8 +1724,8 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
                   })}
                   {consolidatedFunctionGroupPaths(layout.nodes).map(({ parentId, d }) => <path key={`aux-${parentId}`} d={d} />)}
                 </svg>
-                {layout.nodes.filter((parent) => parent.kind !== 'function-group' && layout.nodes.some((child) => child.parentId === parent.id && child.kind !== 'function-group')).map((parent) => {
-                  const children = layout.nodes.filter((child) => child.parentId === parent.id && child.kind !== 'function-group')
+                {layout.nodes.filter((parent) => parent.kind !== 'function-group' && layout.nodes.some((child) => child.parentId === parent.id && !child.connectorSide)).map((parent) => {
+                  const children = layout.nodes.filter((child) => child.parentId === parent.id && !child.connectorSide)
                   const stemEnd = Math.min(...children.map((child) => connectorLane(layout.nodes, parent, child.depth)))
                   const top = parent.y + parent.height + 4
                   const height = Math.max(28, stemEnd - top - 4)
@@ -1791,7 +1795,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
           <div className="selected-chips">{selectedNodes.map((node) => <span key={node.id}>{node.title}</span>)}</div>
           <div className="field-control"><span>Rattacher la sélection à</span><Dropdown label="Rattacher la sélection à" value={bulkParentId} onChange={setBulkParentId} options={[
             { value: '', label: 'Racine de l’organigramme' },
-            ...chart.nodes.filter((node) => node.kind !== 'function-group' && !bulkInvalidParentIds.has(node.id)).map((node) => ({ value: node.id, label: node.title })),
+            ...chart.nodes.filter((node) => node.kind !== 'function-group' && !node.connectorSide && !bulkInvalidParentIds.has(node.id)).map((node) => ({ value: node.id, label: node.title })),
           ]} /></div>
           <button className="button primary bulk-attach" onClick={attachSelectedNodes}>Rattacher {selectedIds.size} départements</button>
           <p className="editor-hint">Ctrl+clic permet d’ajouter ou retirer un bloc de cette sélection.</p>
@@ -1802,7 +1806,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
             {selected.kind !== 'function-group' && <label>Nom<input spellCheck={false} autoCorrect="off" value={selected.title} onChange={(e) => updateNode({ title: e.target.value })} /></label>}
             <div className="field-control"><span>Rattaché à</span><Dropdown label="Rattaché à" value={selected.parentId ?? ''} onChange={(value) => updateNode({ parentId: value || null })} options={[
               { value: '', label: 'Racine' },
-              ...chart.nodes.filter((node) => node.kind !== 'function-group' && !invalidParentIds.has(node.id)).map((node) => ({ value: node.id, label: node.title })),
+              ...chart.nodes.filter((node) => node.kind !== 'function-group' && !node.connectorSide && !invalidParentIds.has(node.id)).map((node) => ({ value: node.id, label: node.title })),
             ]} /></div>
             <div className={`order-controls ${canReorderSelected ? '' : 'disabled'}`}><span>Ordre à ce niveau</span><div><button disabled={!canReorderSelected} onClick={() => moveSelected(-1)} aria-label="Déplacer vers la gauche"><ChevronLeft size={16} /></button><button disabled={!canReorderSelected} onClick={() => moveSelected(1)} aria-label="Déplacer vers la droite"><ChevronRight size={16} /></button></div></div>
           </section>
