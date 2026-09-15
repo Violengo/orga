@@ -7,6 +7,7 @@ export const FUNCTION_GROUP_INSET = 0
 const H_GAP = 36
 const V_GAP = 88
 const MARGIN = 54
+const FUNCTION_GROUP_STEM_GAP = 18
 // Zone occupée en haut par le logo (et, symétriquement, par le cartouche titre).
 // Les racines doivent commencer après cette zone tant qu'elles sont sur la même hauteur.
 const HEADER_SAFE_EDGE = 350
@@ -311,7 +312,10 @@ export function layoutNodes(nodes: OrgNode[]) {
     const sameSide = functionGroups.filter((candidate) => candidate.parentId === group.parentId && candidate.connectorSide === group.connectorSide)
     const index = sameSide.findIndex((candidate) => candidate.id === group.id)
     const side = group.connectorSide === 'left' ? -1 : 1
-    const distance = parent.width / 2 + 42 + width / 2 + index * (width + H_GAP)
+    // Le groupe vit sous la rangée complète : il n'a plus besoin de contourner
+    // la largeur du département parent. Seule une courte respiration autour de
+    // l'axe vertical est conservée.
+    const distance = width / 2 + FUNCTION_GROUP_STEM_GAP + index * (width + H_GAP)
     const positionedGroup: PositionedNode = {
       ...group,
       x: parent.x + parent.width / 2 + side * distance - width / 2,
@@ -322,6 +326,18 @@ export function layoutNodes(nodes: OrgNode[]) {
     }
     positioned.push(positionedGroup)
     shiftedById.set(group.id, positionedGroup)
+  })
+
+  // Si plusieurs axes voisins reçoivent des groupes au même étage, on ne les
+  // écarte que lorsqu'ils se touchent réellement.
+  const groupRows = new Map<number, PositionedNode[]>()
+  positioned.filter((node) => node.kind === 'function-group').forEach((node) => {
+    groupRows.set(node.y, [...(groupRows.get(node.y) ?? []), node])
+  })
+  groupRows.forEach((row) => {
+    row.sort((left, right) => left.x - right.x)
+    const resolved = resolveRowCollisions(row, row.map((node) => node.x))
+    row.forEach((node, index) => { node.x = resolved[index] })
   })
 
   const finalMinX = Math.min(...positioned.map((node) => node.x))
