@@ -132,6 +132,20 @@ function connectorLane(nodes: PositionedNode[], parent: PositionedNode, childDep
   return parentBottom + (childTop - parentBottom) * ((laneIndex + 1) / (parentsWithChildren.length + 1))
 }
 
+function departmentConnectorPath(nodes: PositionedNode[], parent: PositionedNode, child: PositionedNode) {
+  const x1 = connectorSource(parent, child).x
+  const y1 = parent.y + parent.height
+  const x2 = connectorTargetX(parent, child)
+  const y2 = child.y
+  const sameDepth = nodes.filter((node) => node.depth === child.depth && !node.connectorSide)
+  const firstRowTop = Math.min(...sameDepth.map((node) => node.y))
+  if (child.y <= firstRowTop + .5) return roundedConnectorPath(x1, y1, x2, y2, connectorLane(nodes, parent, child.depth))
+  const outsideX = Math.min(...sameDepth.map((node) => node.x)) - 28
+  const topLane = firstRowTop - 28
+  const bottomLane = child.y - 28
+  return `M ${x1} ${y1} V ${topLane} H ${outsideX} V ${bottomLane} H ${x2} V ${y2}`
+}
+
 function connectorTargetX(parent: PositionedNode, child: PositionedNode) {
   const parentCenter = parent.x + parent.width / 2
   const childCenter = child.x + child.width / 2
@@ -330,26 +344,7 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
     if (!node.parentId) return
     const parent = positioned.get(node.parentId)
     if (!parent) return
-    const x1 = connectorSource(parent, node).x
-    const y1 = parent.y + parent.height
-    const x2 = connectorTargetX(parent, node)
-    const y2 = node.y
-    const mid = connectorLane(layout.nodes, parent, node.depth)
-    const direction = Math.sign(x2 - x1)
-    const radius = Math.min(14, Math.abs(x2 - x1) / 2, Math.abs(mid - y1) / 2, Math.abs(y2 - mid) / 2)
-    context.beginPath()
-    context.moveTo(x1, y1)
-    if (Math.abs(x1 - x2) < .5) {
-      context.lineTo(x2, y2)
-      context.stroke()
-      return
-    }
-    context.lineTo(x1, mid - radius)
-    context.quadraticCurveTo(x1, mid, x1 + direction * radius, mid)
-    context.lineTo(x2 - direction * radius, mid)
-    context.quadraticCurveTo(x2, mid, x2, mid + radius)
-    context.lineTo(x2, y2)
-    context.stroke()
+    context.stroke(new Path2D(departmentConnectorPath(layout.nodes, parent, node)))
   })
   consolidatedFunctionGroupPaths(layout.nodes).forEach(({ d }) => context.stroke(new Path2D(d)))
 
@@ -451,6 +446,15 @@ async function renderExportCanvas(chart: OrgChart, layout: ReturnType<typeof lay
         const path = new Path2D(roundedConnectorPath(node.x + parent.x + parent.width / 2, bodyTop + parent.y + parent.height, node.x + member.x + member.width / 2, bodyTop + member.y))
         context.stroke(path)
       })
+      if (departmentIconType(node.title) === 'staff') {
+        const centered = tree.members.filter((member) => Math.abs(member.x + member.width / 2 - node.width / 2) < 1).sort((left, right) => right.depth - left.depth)[0]
+        if (centered) {
+          context.beginPath()
+          context.moveTo(node.x + node.width / 2, node.y + headerHeight + centered.y + centered.height)
+          context.lineTo(node.x + node.width / 2, node.y + node.height)
+          context.stroke()
+        }
+      }
       tree.members.forEach((member) => drawMember(member, node.x + member.x, node.y + headerHeight + member.y, member.width))
     } else {
       const columns = memberColumns(node)
@@ -731,6 +735,10 @@ function NodeCard({
               if (!parent) return null
               return <path key={member.id} d={roundedConnectorPath(parent.x + parent.width / 2, parent.y + parent.height, member.x + member.width / 2, member.y)} />
             })}
+            {isStaff && (() => {
+              const centered = tree.members.filter((member) => Math.abs(member.x + member.width / 2 - node.width / 2) < 1).sort((left, right) => right.depth - left.depth)[0]
+              return centered ? <path d={`M ${node.width / 2} ${centered.y + centered.height} V ${tree.height}`} /> : null
+            })()}
           </svg>
           {tree.members.map((member) => renderMember(member, member.width, { position: 'absolute', left: member.x, top: member.y, width: member.width, minHeight: member.height }))}
         </>}
@@ -1838,11 +1846,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
                 <svg className="connectors" width={layout.width} height={layout.height} aria-hidden="true">
                   {layout.nodes.filter((node) => !node.connectorSide && node.parentId && positions.has(node.parentId)).map((node) => {
                     const parent = positions.get(node.parentId!)!
-                    const x1 = connectorSource(parent, node).x
-                    const y1 = parent.y + parent.height
-                    const x2 = connectorTargetX(parent, node)
-                    const y2 = node.y
-                    return <path key={node.id} d={roundedConnectorPath(x1, y1, x2, y2, connectorLane(layout.nodes, parent, node.depth))} />
+                    return <path key={node.id} d={departmentConnectorPath(layout.nodes, parent, node)} />
                   })}
                   {consolidatedFunctionGroupPaths(layout.nodes).map(({ parentId, d }) => <path key={`aux-${parentId}`} d={d} />)}
                 </svg>
