@@ -1305,6 +1305,16 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
     setInspectorOpen(false)
   }
 
+  useEffect(() => {
+    if (!selectedMember) return
+    const frame = window.requestAnimationFrame(() => {
+      const editor = document.querySelector<HTMLElement>(`.person-editor[data-member-id="${selectedMember.memberId}"]`)
+      editor?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      editor?.querySelector<HTMLInputElement>('input[aria-label="Fonction"]')?.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [selectedMember, inspectorOpen])
+
   const attachSelectedNodes = () => {
     if (selectedIds.size < 2) return
     const parentId = bulkParentId || null
@@ -1739,6 +1749,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
                   onSelectMember={(memberId) => {
                     selectNode(node.id, false, false)
                     setSelectedMember({ nodeId: node.id, memberId })
+                    setInspectorOpen(true)
                   }}
                   onRequestDeleteMember={(memberId) => setPendingDeleteMember({ nodeId: node.id, memberId })}
                   anchoredMemberIds={chart.nodes
@@ -1801,7 +1812,7 @@ export default function App({ initialChart, onBackToLibrary, onCloudSave }: OrgC
             {selected.members.map((member) => {
               const invalidParents = memberBranchIds(selected.members, member.id)
               const parentValue = member.parentMemberId === undefined ? '__list__' : member.parentMemberId ?? ''
-              return <div className="person-editor" key={member.id}>
+              return <div className={`person-editor ${selectedMember?.nodeId === selected.id && selectedMember.memberId === member.id ? 'selected-member-editor' : ''}`} data-member-id={member.id} key={member.id}>
               <div className="person-editor-actions">
                 <button disabled={selected.members.length < 2} onClick={() => moveMember(member.id, -1)} aria-label={`Monter la fonction ${member.role}`} title="Déplacer vers le haut"><ChevronUp size={13} /></button>
                 <button disabled={selected.members.length < 2} onClick={() => moveMember(member.id, 1)} aria-label={`Descendre la fonction ${member.role}`} title="Déplacer vers le bas"><ChevronDown size={13} /></button>
